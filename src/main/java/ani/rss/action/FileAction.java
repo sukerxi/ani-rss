@@ -5,6 +5,7 @@ import ani.rss.annotation.Path;
 import ani.rss.util.ConfigUtil;
 import ani.rss.util.ExceptionUtil;
 import ani.rss.util.HttpReq;
+import ani.rss.util.ServerUtil;
 import cn.hutool.core.codec.Base64;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.io.IoUtil;
@@ -34,7 +35,7 @@ import java.util.function.Consumer;
 @Path("/file")
 public class FileAction implements BaseAction {
 
-    public static void getImg(String url, Consumer<InputStream> consumer) {
+    public void getImg(String url, Consumer<InputStream> consumer) {
         URI host = URLUtil.getHost(URLUtil.url(url));
         HttpReq.get(url)
                 .then(res -> {
@@ -54,74 +55,91 @@ public class FileAction implements BaseAction {
                 });
     }
 
-    @Override
-    public void doAction(HttpServerRequest request, HttpServerResponse response) throws IOException {
-        String img = request.getParam("img");
-        if (StrUtil.isNotBlank(img)) {
-            response.setHeader(Header.CACHE_CONTROL, "private, max-age=86400");
-            img = Base64.decodeStr(img);
-            response.setContentType(FileUtil.getMimeType(URLUtil.getPath(img)));
+    /**
+     * 处理图片文件
+     *
+     * @param img 图片名
+     */
+    public void doImg(String img) {
+        HttpServerResponse response = ServerUtil.RESPONSE.get();
 
-            File configDir = ConfigUtil.getConfigDir();
+        response.setHeader(Header.CACHE_CONTROL, "private, max-age=86400");
+        img = Base64.decodeStr(img);
+        response.setContentType(FileUtil.getMimeType(URLUtil.getPath(img)));
 
-            File file = new File(URLUtil.getPath(img));
-            configDir = new File(configDir + "/img/" + file.getParentFile().getName());
-            FileUtil.mkdir(configDir);
+        File configDir = ConfigUtil.getConfigDir();
 
-            File imgFile = new File(configDir, file.getName());
-            if (imgFile.exists()) {
+        File file = new File(URLUtil.getPath(img));
+        configDir = new File(configDir + "/img/" + file.getParentFile().getName());
+        FileUtil.mkdir(configDir);
+
+        File imgFile = new File(configDir, file.getName());
+        if (imgFile.exists()) {
+            try {
                 @Cleanup
                 BufferedInputStream inputStream = FileUtil.getInputStream(imgFile);
                 @Cleanup
                 OutputStream out = response.getOut();
                 IoUtil.copy(inputStream, out);
-                return;
+            } catch (Exception ignored) {
             }
-
-            getImg(img, is -> {
-                try {
-                    FileUtil.writeFromStream(is, imgFile, true);
-                    @Cleanup
-                    BufferedInputStream inputStream = FileUtil.getInputStream(imgFile);
-                    @Cleanup
-                    OutputStream out = response.getOut();
-                    IoUtil.copy(inputStream, out);
-                } catch (Exception ignored) {
-                }
-            });
             return;
         }
 
+        getImg(img, is -> {
+            try {
+                FileUtil.writeFromStream(is, imgFile, true);
+                @Cleanup
+                BufferedInputStream inputStream = FileUtil.getInputStream(imgFile);
+                @Cleanup
+                OutputStream out = response.getOut();
+                IoUtil.copy(inputStream, out);
+            } catch (Exception ignored) {
+            }
+        });
+    }
 
-        String filename = request.getParam("filename");
+    /**
+     * 处理文件
+     *
+     * @param filename 文件名
+     */
+    private void doFile(String filename) {
+        HttpServerRequest request = ServerUtil.REQUEST.get();
+        HttpServerResponse response = ServerUtil.RESPONSE.get();
+
+        File file = new File(filename);
+        if (!file.exists()) {
+            File configDir = ConfigUtil.getConfigDir();
+            file = new File(configDir + "/files/" + filename);
+            if (!file.exists()) {
+                response.send404("404 Not Found !");
+                return;
+            }
+        }
 
         boolean hasRange = false;
         long start = 0;
+        long end = file.length() - 1;
 
-        if (StrUtil.isBlank(filename)) {
-            response.send404("404 Not Found !");
-            return;
-        }
-        if (Base64.isBase64(filename)) {
-            filename = Base64.decodeStr(filename);
-        }
+        String mimeType = getMimeType(file.getName());
 
-        String mimeType = FileUtil.getMimeType(filename);
-
-        response.setHeader("Content-Disposition", StrFormatter.format("inline; filename=\"{}\"", URLUtil.encode(new File(filename).getName())));
-        if (StrUtil.isBlank(mimeType)) {
-            response.setContentType(ContentType.OCTET_STREAM.getValue());
-        } else if (mimeType.startsWith("video/")) {
-            String extName = FileUtil.extName(filename);
-            response.setHeader("Content-Type", "video/" + extName);
+        response.setHeader("Content-Disposition", StrFormatter.format("inline; filename=\"{}\"", URLUtil.encode(file.getName())));
+        if (mimeType.startsWith("video/")) {
+            response.setHeader("Content-Type", mimeType);
             response.setHeader("Accept-Ranges", "bytes");
             String rangeHeader = request.getHeader("Range");
-            long fileLength = new File(filename).length();
+            long fileLength = file.length();
             if (StrUtil.isNotBlank(rangeHeader) && rangeHeader.startsWith("bytes=")) {
                 String[] range = rangeHeader.substring(6).split("-");
-                start = Long.parseLong(range[0]);
-                long contentLength = fileLength - start;
-                response.setHeader("Content-Range", "bytes " + start + "-" + (fileLength - 1) + "/" + fileLength);
+                if (range.length > 0) {
+                    start = Long.parseLong(range[0]);
+                }
+                if (range.length > 1) {
+                    end = Long.parseLong(range[1]);
+                }
+                long contentLength = end - start + 1;
+                response.setHeader("Content-Range", "bytes " + start + "-" + end + "/" + fileLength);
                 response.setHeader("Content-Length", String.valueOf(contentLength));
                 hasRange = true;
             } else {
@@ -133,11 +151,6 @@ public class FileAction implements BaseAction {
         }
 
         try {
-            File file = new File(filename);
-            if (!file.exists()) {
-                File configDir = ConfigUtil.getConfigDir();
-                file = new File(configDir + "/files/" + filename);
-            }
             if (hasRange) {
                 response.send(206);
                 @Cleanup
@@ -145,10 +158,11 @@ public class FileAction implements BaseAction {
                 @Cleanup
                 RandomAccessFile randomAccessFile = new RandomAccessFile(file, "r");
                 randomAccessFile.seek(start);
+                @Cleanup
                 FileChannel channel = randomAccessFile.getChannel();
                 @Cleanup
                 InputStream inputStream = Channels.newInputStream(channel);
-                IoUtil.copy(inputStream, out, 40960);
+                IoUtil.copy(inputStream, out, 40960, end - start, null);
             } else {
                 @Cleanup
                 OutputStream out = response.getOut();
@@ -160,6 +174,57 @@ public class FileAction implements BaseAction {
             String message = ExceptionUtil.getMessage(e);
             log.debug(message, e);
         }
+    }
+
+    @Override
+    public void doAction(HttpServerRequest request, HttpServerResponse response) throws IOException {
+        String img = request.getParam("img");
+        if (StrUtil.isNotBlank(img)) {
+            doImg(img);
+            return;
+        }
+
+        String filename = request.getParam("filename");
+
+        if (StrUtil.isBlank(filename)) {
+            response.send404("404 Not Found !");
+            return;
+        }
+
+        if (Base64.isBase64(filename)) {
+            filename = Base64.decodeStr(filename);
+        }
+
+        doFile(filename);
+    }
+
+    /**
+     * 根据文件扩展名获得MimeType
+     *
+     * @param filename 文件名
+     * @return MimeType
+     */
+    private String getMimeType(String filename) {
+        if (StrUtil.isBlank(filename)) {
+            return ContentType.OCTET_STREAM.getValue();
+        }
+
+        String extName = FileUtil.extName(filename);
+
+        if (StrUtil.isBlank(extName)) {
+            return ContentType.OCTET_STREAM.getValue();
+        }
+
+        if (extName.equalsIgnoreCase("mkv")) {
+            return "video/x-matroska";
+        }
+
+        String mimeType = FileUtil.getMimeType(filename);
+        if (StrUtil.isNotBlank(mimeType)) {
+            return mimeType;
+        }
+
+        return ContentType.OCTET_STREAM.getValue();
     }
 
 }

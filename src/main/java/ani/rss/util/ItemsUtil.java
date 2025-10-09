@@ -393,6 +393,7 @@ public class ItemsUtil {
         procrastinating = ani.getProcrastinating();
 
         if (!procrastinating) {
+            // 未开启摸鱼检测
             return;
         }
 
@@ -401,8 +402,15 @@ public class ItemsUtil {
             return;
         }
 
+        Boolean procrastinatingMasterOnly = config.getProcrastinatingMasterOnly();
+        if (procrastinatingMasterOnly) {
+            // 仅启用主rss摸鱼检测
+            items = items.stream()
+                    .filter(Item::getMaster)
+                    .toList();
+        }
+
         items.stream()
-                .filter(Item::getMaster)
                 .map(Item::getPubDate)
                 .filter(Objects::nonNull)
                 .mapToLong(Date::getTime)

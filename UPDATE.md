@@ -1,8 +1,4 @@
-refactor: 优化仅允许内网访问的提示
-
-build: 更新docker为jdk24
-
-build: 升级前端依赖库
+fix: 编辑订阅有时会导致当前集数不更新
 
 [请不要将本项目在国内宣传](https://github.com/wushuo894/ani-rss/discussions/504)
 
