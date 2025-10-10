@@ -13,6 +13,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write 
     steps:
       - uses: actions/checkout@v4
       - name: Set up JDK 17
@@ -34,6 +37,7 @@ jobs:
           echo "$(cat info.json)"
 
           echo "version=v$version" >> $GITHUB_ENV
+          
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
@@ -50,28 +54,40 @@ jobs:
             ./target/ani-rss.win.x86_64.zip
             ./target/ani-rss.win.x86_64.zip.md5
             ./info.json
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
+        
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - name: Login to Docker Hub
+
+      - name: Docker Meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=${{ env.app_version }}
+            type=raw,value=latest 
+        
+      - name: Login GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+          registry: ghcr.io
+          # username: ${{ github.actor }}
+          # password: ${{ secrets.GHCR_TOKEN }}
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: ./
           file: ./docker/Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
-          tags: wushuo894/ani-rss:latest,wushuo894/ani-rss:${{ env.version }}
-      - name: Build and push Docker image Arm32v7
-        uses: docker/build-push-action@v6
-        with:
-          context: ./
-          file: ./docker/Dockerfile-armv7
-          platforms: linux/arm/v7
-          push: true
-          tags: wushuo894/ani-rss-armv7:latest,wushuo894/ani-rss-armv7:${{ env.version }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha, scope=${{ github.workflow }}-docker
+          cache-to: type=gha, scope=${{ github.workflow }}-docker
