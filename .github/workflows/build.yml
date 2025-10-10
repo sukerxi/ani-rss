@@ -1,18 +1,13 @@
-# This workflow will build a Java project with Maven, and cache/restore any dependencies to improve the workflow execution time
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-java-with-maven
-
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
-
-name: maven
+name: build
 
 on:
   workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
     steps:
       - uses: actions/checkout@v4
       - name: Set up JDK 17
@@ -54,32 +49,35 @@ jobs:
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - name: Login to Docker Hub
+
+
+      - name: Login GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+          registry: ghcr.io
+          # username: ${{ github.actor }}
+          # password: ${{ secrets.GHCR_TOKEN }}
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker Meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=${{ env.version }}
+            type=raw,value=latest 
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: ./
           file: ./docker/Dockerfile
-          platforms: linux/amd64,linux/arm64
           push: true
-          tags: wushuo894/ani-rss:latest,wushuo894/ani-rss:${{ env.version }}
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: ./
-          file: ./docker/Dockerfile-openj9
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: wushuo894/ani-rss:openj9,wushuo894/ani-rss:${{ env.version }}-openj9
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: ./
-          file: ./docker/Dockerfile-arm32v7
-          platforms: linux/arm/v7
-          push: true
-          tags: wushuo894/ani-rss:arm32v7,wushuo894/ani-rss:${{ env.version }}-arm32v7
+          tags: ${{ steps.meta.outputs.tags }}
+          # labels: ${{ steps.meta.outputs.labels }}
+          # no-cache: true
+          # cache-from: type=gha, scope=${{ github.workflow }}-docker
+          # cache-to: type=gha, scope=${{ github.workflow }}-docker
