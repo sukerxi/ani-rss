@@ -141,7 +141,7 @@ public class ConfigUtil {
                 .setSkip5(true)
                 .setStandbyRss(false)
                 .setCoexist(false)
-                .setLogsMax(2048)
+                .setLogsMax(128)
                 .setDebug(false)
                 .setProcrastinatingMasterOnly(true)
                 .setProxy(false)
@@ -234,7 +234,9 @@ public class ConfigUtil {
                 .setTmdbIdPlexMode(false)
                 .setProxyList(proxyList)
                 .setScrape(false)
-                .setReplace(false);
+                .setReplace(false)
+                .setMaxFileNameLength(0)
+                .setLimitLoginAttempts(true);
     }
 
     /**

@@ -1,4 +1,4 @@
-fix: 修复重复导入的问题
+refactor: 优化限制尝试次数
 
 [请不要将本项目在国内宣传](https://github.com/wushuo894/ani-rss/discussions/504)
 

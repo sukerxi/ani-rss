@@ -190,7 +190,7 @@ public class Config implements Serializable {
     private Boolean autoDisabled;
 
     /**
-     * 自动跳过 xx.5 集数
+     * 自动跳过 x.5 集数
      */
     private Boolean skip5;
 
@@ -640,4 +640,14 @@ public class Config implements Serializable {
      * 重名的订阅将允许被替换
      */
     private Boolean replace;
+
+    /**
+     * 最大文件名长度 不包含后缀 如: .mkv .mp4
+     */
+    private Integer maxFileNameLength;
+
+    /**
+     * 限制尝试次数
+     */
+    private Boolean limitLoginAttempts;
 }
