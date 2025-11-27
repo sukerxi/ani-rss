@@ -19,7 +19,7 @@
 
 <script setup>
 
-import {markRaw, ref} from "vue";
+import {getCurrentInstance, markRaw, ref} from "vue";
 import api from "@/js/api.js";
 import {ElMessage, ElMessageBox} from "element-plus";
 import {Delete} from "@element-plus/icons-vue";
@@ -36,7 +36,11 @@ const delAni = async () => {
   let action = () => api.del('api/ani?deleteFiles=' + deleteFiles.value, aniList.value.map(it => it['id']))
       .then(res => {
         ElMessage.success(res.message)
-        emit('load')
+        if (instance.vnode.props.onCallback) {
+          emit('callback')
+        } else {
+          window.$reLoadList()
+        }
         dialogVisible.value = false
       })
       .finally(() => {
@@ -44,7 +48,7 @@ const delAni = async () => {
       });
 
   if (!deleteFiles.value) {
-    action()
+    await action()
     return
   }
 
@@ -55,21 +59,12 @@ const delAni = async () => {
     downloadPath = res.data['downloadPath']
   }
 
-  let s = downloadPath ? `我确定删除文件夹 ${downloadPath}` : `我确定删除共${aniList.value.length}个订阅与本地文件`
-
-  ElMessageBox.prompt(
+  ElMessageBox.confirm(
       `<strong style="color: var(--el-color-danger);">
-        将会删除整个文件夹, 请在输入框输入对应文本继续！
-       </strong>
-       <br>
-       <span class="el-text el-text--small mx-1">
-        <strong>将此文本填入文本框</strong> [${s}]
-       </span>`,
+        将会删除整个文件夹, 是否执意继续? ${downloadPath}
+       </strong>`,
       '警告',
       {
-        inputPlaceholder: '在此输入确认文本',
-        inputValidator: (it) => it === s,
-        inputErrorMessage: `请输入 [${s}]`,
         dangerouslyUseHTMLString: true,
         confirmButtonText: '执意继续删除',
         confirmButtonClass: 'is-text is-has-bg el-button--danger',
@@ -95,7 +90,9 @@ defineExpose({
   show
 })
 
-const emit = defineEmits(['load'])
+const instance = getCurrentInstance()
+
+const emit = defineEmits(['callback'])
 </script>
 
 <style scoped>

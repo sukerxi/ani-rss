@@ -4,9 +4,14 @@
       <img alt="icon.svg" height="80" src="../../public/icon.svg" width="80"/>
       <div>
         <h1>ANI-RSS</h1>
-        <el-text class="mx-1" size="small">
-          &nbsp;v{{ props.config.version }}
-        </el-text>
+        <el-tooltip
+            :disabled="!props.config.buildInfo"
+            :content="props.config.buildInfo"
+            placement="right">
+          <el-text class="mx-1" size="small" style="cursor: pointer;">
+            &nbsp;v{{ props.config.version }}
+          </el-text>
+        </el-tooltip>
       </div>
     </div>
     <div class="flex" style="margin-bottom: 12px;align-items: center;">
@@ -105,6 +110,8 @@ import 'markdown-it-github-alerts/styles/github-colors-light.css'
 import 'markdown-it-github-alerts/styles/github-colors-dark-media.css'
 import 'markdown-it-github-alerts/styles/github-base.css'
 
+import {authorization} from "@/js/global.js";
+
 let md = markdownit({
   html: true,
   linkify: true
@@ -126,7 +133,7 @@ const stop = (status) => {
       .then(res => {
         ElMessage.success(res.message)
         setTimeout(() => {
-          localStorage.removeItem("authorization")
+          authorization.value = ''
           location.reload()
         }, 5000)
       })
@@ -141,7 +148,7 @@ const update = () => {
       .then(res => {
         ElMessage.success(res.message)
         setTimeout(() => {
-          localStorage.removeItem("authorization")
+          authorization.value = ''
           location.reload()
         }, 5000)
       })
@@ -165,7 +172,7 @@ onMounted(() => {
 })
 
 let logout = () => {
-  localStorage.removeItem('authorization')
+  authorization.value = ''
   location.reload()
 }
 
