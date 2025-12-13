@@ -1,12 +1,13 @@
 package ani.rss.action;
 
-import ani.rss.annotation.Auth;
-import ani.rss.annotation.Path;
-import ani.rss.commons.CacheUtil;
+import ani.rss.commons.CacheUtils;
 import ani.rss.entity.Config;
 import ani.rss.entity.Login;
-import ani.rss.util.AuthUtil;
 import ani.rss.util.other.ConfigUtil;
+import ani.rss.web.action.BaseAction;
+import ani.rss.web.annotation.Auth;
+import ani.rss.web.annotation.Path;
+import ani.rss.web.util.AuthUtil;
 import cn.hutool.core.lang.Assert;
 import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.core.util.RandomUtil;
@@ -16,7 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
 
-import static ani.rss.util.AuthUtil.limitLoginAttempts;
+import static ani.rss.web.util.AuthUtil.limitLoginAttempts;
 
 /**
  * 登录
@@ -71,8 +72,8 @@ public class LoginAction implements BaseAction {
     public static void clearLimitLoginAttempts() {
         String ip = AuthUtil.getIp();
         String key = "LimitLoginAttempts#" + ip;
-        if (CacheUtil.containsKey(key)) {
-            CacheUtil.remove(key);
+        if (CacheUtils.containsKey(key)) {
+            CacheUtils.remove(key);
         }
     }
 

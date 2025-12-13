@@ -1,13 +1,13 @@
 package ani.rss.notification;
 
-import ani.rss.commons.ExceptionUtil;
+import ani.rss.commons.ExceptionUtils;
 import ani.rss.entity.Ani;
 import ani.rss.entity.NotificationConfig;
 import ani.rss.enums.NotificationStatusEnum;
 import cn.hutool.core.lang.Assert;
 import cn.hutool.core.text.StrFormatter;
+import cn.hutool.extra.mail.JakartaMailUtil;
 import cn.hutool.extra.mail.MailAccount;
-import cn.hutool.extra.mail.MailUtil;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -53,11 +53,13 @@ public class MailNotification implements BaseNotification {
 
         String title = ani.getTitle();
 
+        title = text.length() > 200 ? title : text;
+
         try {
-            MailUtil.send(mailAccount, List.of(mailAddressee), text.length() > 200 ? title : text, notificationTemplate, true);
+            JakartaMailUtil.send(mailAccount, List.of(mailAddressee), title, notificationTemplate, true);
             return true;
         } catch (Exception e) {
-            String message = ExceptionUtil.getMessage(e);
+            String message = ExceptionUtils.getMessage(e);
             log.error(message, e);
             return false;
         }

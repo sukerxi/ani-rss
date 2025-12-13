@@ -1,10 +1,11 @@
 package ani.rss.action;
 
 
-import ani.rss.annotation.Auth;
-import ani.rss.annotation.Path;
 import ani.rss.entity.Result;
 import ani.rss.util.other.ConfigUtil;
+import ani.rss.web.action.BaseAction;
+import ani.rss.web.annotation.Auth;
+import ani.rss.web.annotation.Path;
 import cn.hutool.core.codec.Base64;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.net.multipart.MultipartFormData;

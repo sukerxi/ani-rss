@@ -1,27 +1,26 @@
 package ani.rss;
 
-import ani.rss.commons.ExceptionUtil;
-import ani.rss.commons.MavenUtil;
+import ani.rss.commons.ExceptionUtils;
+import ani.rss.commons.MavenUtils;
+import ani.rss.entity.Global;
 import ani.rss.other.Cron;
 import ani.rss.service.TaskService;
-import ani.rss.util.ServerUtil;
 import ani.rss.util.other.AniUtil;
 import ani.rss.util.other.ConfigUtil;
 import ani.rss.util.other.MenuUtil;
+import ani.rss.web.util.ServerUtil;
 import cn.hutool.core.util.ObjectUtil;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.ArrayList;
+import java.security.Security;
 import java.util.List;
 
 @Slf4j
 public class ApplicationMain {
 
-    public static List<String> ARGS = new ArrayList<>();
-
     public static void main(String[] args) {
-        System.setProperty("jdk.http.auth.tunneling.disabledSchemes", "");
-        ApplicationMain.ARGS = List.of(ObjectUtil.defaultIfNull(args, new String[]{}));
+        Global.ARGS = List.of(ObjectUtil.defaultIfNull(args, new String[]{}));
+        loadProperty();
         try {
             ConfigUtil.load();
             ConfigUtil.backup();
@@ -30,15 +29,24 @@ public class ApplicationMain {
 
             AniUtil.load();
             TaskService.start();
-            String version = MavenUtil.getVersion();
+            String version = MavenUtils.getVersion();
             log.info("version {}", version);
 
             Cron.start();
         } catch (Exception e) {
-            String message = ExceptionUtil.getMessage(e);
+            String message = ExceptionUtils.getMessage(e);
             log.error(message, e);
             System.exit(1);
         }
+    }
+
+    public static void loadProperty() {
+        // 启用Basic认证
+        System.setProperty("jdk.http.auth.tunneling.disabledSchemes", "");
+        // DNS解析成功过期时间
+        Security.setProperty("networkaddress.cache.ttl", "30");
+        // DNS解析失败过期时间
+        Security.setProperty("networkaddress.cache.negative.ttl", "5");
     }
 
 }

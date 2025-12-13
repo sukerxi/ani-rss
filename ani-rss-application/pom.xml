@@ -6,7 +6,7 @@
     <parent>
         <groupId>ani.rss</groupId>
         <artifactId>ani-rss</artifactId>
-        <version>2.4.8</version>
+        <version>2.4.15</version>
     </parent>
 
     <artifactId>ani-rss-application</artifactId>
@@ -20,6 +20,10 @@
     <dependencies>
         <dependency>
             <groupId>ani.rss</groupId>
+            <artifactId>ani-rss-ui</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ani.rss</groupId>
             <artifactId>ani-rss-web</artifactId>
         </dependency>
         <dependency>
@@ -30,7 +34,6 @@
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
-            <version>4.13.2</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -41,7 +44,6 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-assembly-plugin</artifactId>
-                <version>3.7.1</version>
                 <configuration>
                     <descriptorRefs>
                         <descriptorRef>jar-with-dependencies</descriptorRef>
@@ -66,7 +68,6 @@
             <plugin>
                 <groupId>com.akathist.maven.plugins.launch4j</groupId>
                 <artifactId>launch4j-maven-plugin</artifactId>
-                <version>2.6.0</version>
                 <executions>
                     <execution>
                         <id>l4j</id>
@@ -86,13 +87,15 @@
                             <supportUrl>https://whichjdk.com/</supportUrl>
                             <stayAlive>false</stayAlive>
                             <restartOnCrash>false</restartOnCrash>
-                            <icon>${project.parent.basedir}/ui/public/favicon.ico</icon>
+                            <icon>${project.parent.basedir}/ani-rss-ui/public/favicon.ico</icon>
                             <jre>
                                 <path>jre/bin;%JAVA_HOME%/bin;%PATH%</path>
                                 <minVersion>17</minVersion>
                                 <opts>
                                     <opt>-Xms60m -Xmx1g -Xss256k</opt>
                                     <opt>--enable-native-access=ALL-UNNAMED</opt>
+                                    <opt>-XX:+UseCompactObjectHeaders</opt>
+                                    <opt>-XX:+IgnoreUnrecognizedVMOptions</opt>
                                     <opt>--add-opens=java.base/java.net=ALL-UNNAMED</opt>
                                     <opt>--add-opens=java.base/sun.net.www.protocol.https=ALL-UNNAMED</opt>
                                 </opts>
@@ -109,8 +112,53 @@
                     </execution>
                 </executions>
             </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>generate-resources</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>bash</executable>
+                            <arguments>
+                                <argument>./generate-resources.sh</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>generate-md5sum</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>java</goal>
+                        </goals>
+                        <configuration>
+                            <mainClass>ani.rss.build.Md5Sum</mainClass>
+                            <systemProperties>
+                                <systemProperty>
+                                    <key>basedir</key>
+                                    <value>${project.basedir}</value>
+                                </systemProperty>
+                            </systemProperties>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
-
-
 </project>
