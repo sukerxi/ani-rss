@@ -46,7 +46,55 @@ public class HttpReq {
         req.header(Header.USER_AGENT, ua);
     }
 
+    /**
+     * 应用域名映射
+     * 将请求URL中匹配映射规则的域名替换为对应的目标URL
+     *
+     * @param url 原始URL
+     * @return 映射后的URL
+     */
+    private static String applyDomainMapping(String url) {
+        try {
+            String domainMapping = ConfigUtil.CONFIG.getDomainMapping();
+            if (StrUtil.isBlank(domainMapping)) {
+                return url;
+            }
+
+            URL parsedUrl = new URL(url);
+            String host = parsedUrl.getHost();
+
+            List<String> lines = StrUtil.split(domainMapping, "\n", true, true);
+            for (String line : lines) {
+                List<String> parts = StrUtil.split(line, "=", 2, true, true);
+                if (parts.size() != 2) {
+                    continue;
+                }
+                String originalDomain = parts.get(0).trim();
+                String targetUrl = parts.get(1).trim();
+
+                if (StrUtil.isBlank(originalDomain) || StrUtil.isBlank(targetUrl)) {
+                    continue;
+                }
+
+                if (host.equals(originalDomain) || host.endsWith("." + originalDomain)) {
+                    String originalBase = parsedUrl.getProtocol() + "://" + host;
+                    int port = parsedUrl.getPort();
+                    if (port != -1 && port != parsedUrl.getDefaultPort()) {
+                        originalBase += ":" + port;
+                    }
+                    String mappedUrl = url.replace(originalBase, targetUrl.replaceAll("/+$", ""));
+                    log.debug("域名映射: {} -> {}", url, mappedUrl);
+                    return mappedUrl;
+                }
+            }
+        } catch (Exception e) {
+            log.error("域名映射处理失败: {}", url, e);
+        }
+        return url;
+    }
+
     public static HttpRequest post(String url) {
+        url = applyDomainMapping(url);
         HttpRequest req = HttpRequestPlus.post(url);
         config(req);
         setProxy(req);
@@ -61,6 +109,7 @@ public class HttpReq {
     }
 
     public static HttpRequest get(String url) {
+        url = applyDomainMapping(url);
         HttpRequest req = HttpRequestPlus.get(url);
         config(req);
         setProxy(req);
@@ -68,6 +117,7 @@ public class HttpReq {
     }
 
     public static HttpRequest put(String url) {
+        url = applyDomainMapping(url);
         HttpRequest req = HttpRequestPlus.put(url);
         config(req);
         setProxy(req);
@@ -75,6 +125,7 @@ public class HttpReq {
     }
 
     public static HttpRequest delete(String url) {
+        url = applyDomainMapping(url);
         HttpRequest req = HttpRequestPlus.delete(url);
         config(req);
         setProxy(req);
