@@ -3,6 +3,21 @@
   <SettingsItem label="BgmApi">
     <el-input v-model:model-value="props.config['bgmApi']" placeholder="https://api.bgm.tv"/>
   </SettingsItem>
+  <SettingsItem label="域名映射">
+    <div class="full-width">
+      <el-input
+          class="full-width"
+          type="textarea"
+          :autosize="{ minRows: 3, maxRows: 6}"
+          v-model="props.config['domainMapping']"
+          placeholder="lain.bgm.tv=bgm-proxy.workers.dev&#10;bgm.tv=bgm-proxy.workers.dev"/>
+      <el-text class="mx-1" size="small">
+        每行一个映射, 格式: 原始域名=目标域名, 无需填写协议
+        <br>
+        匹配到的请求将替换为对应的目标域名, 协议与原请求保持一致
+      </el-text>
+    </div>
+  </SettingsItem>
   <SettingsItem label="获取方式">
     <el-radio-group v-model="props.config['bgmTokenType']">
       <el-radio label="手动输入" value="INPUT"/>

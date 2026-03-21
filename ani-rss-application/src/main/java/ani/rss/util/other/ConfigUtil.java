@@ -226,6 +226,7 @@ public class ConfigUtil {
                 .setSubtitleIndependentFolderEnabled(false)
                 .setSubtitleIndependentFolderName("Subs")
                 .setBgmApi("https://api.bgm.tv")
+                .setDomainMapping("")
                 .setAutoStart(false)
                 .setAllowCors(false)
                 .setUuid(UUID.randomUUID().toString())
@@ -324,6 +325,9 @@ public class ConfigUtil {
     public static void format(Config config) {
         formatPath(config);
         formatUrl(config);
+
+        // 域名映射: 去除空行与首尾空格
+        config.setDomainMapping(String.join("\n", StrUtil.split(config.getDomainMapping(), "\n", true, true)));
 
         String messageTemplate = config.getNotificationTemplate();
         config.setNotificationTemplate(messageTemplate.trim());

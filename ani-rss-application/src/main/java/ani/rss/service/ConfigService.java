@@ -156,7 +156,7 @@ public class ConfigService {
         log.info(url);
 
         HttpRequest httpRequest = HttpReq.get(url);
-        HttpReq.setProxy(httpRequest, config);
+        HttpReq.setProxy(httpRequest, config, url);
 
         ProxyTest proxyTest = new ProxyTest();
         Result<ProxyTest> result = Result.success(proxyTest);
