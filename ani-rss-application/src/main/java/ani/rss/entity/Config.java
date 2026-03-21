@@ -723,6 +723,9 @@ public class Config implements Serializable {
     @Schema(description = "bgmApi")
     private String bgmApi;
 
+    @Schema(description = "域名映射(每行一个, 格式: 原始域名=目标域名)")
+    private String domainMapping;
+
     @Schema(description = "开机自启动")
     private Boolean autoStart;
 

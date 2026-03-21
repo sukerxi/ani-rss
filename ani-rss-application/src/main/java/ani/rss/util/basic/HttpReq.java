@@ -3,10 +3,12 @@ package ani.rss.util.basic;
 import ani.rss.cache.CacheUtils;
 import ani.rss.commons.GsonStatic;
 import ani.rss.commons.MavenUtils;
+import ani.rss.commons.URLUtils;
 import ani.rss.entity.Config;
 import ani.rss.entity.web.Header;
 import ani.rss.util.other.ConfigUtil;
 import cn.hutool.core.lang.Assert;
+import cn.hutool.core.lang.Pair;
 import cn.hutool.core.text.StrFormatter;
 import cn.hutool.core.util.ReflectUtil;
 import cn.hutool.core.util.StrUtil;
@@ -15,6 +17,7 @@ import cn.hutool.crypto.SecureUtil;
 import cn.hutool.http.HttpConnection;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
+import cn.hutool.http.Method;
 import cn.hutool.http.cookie.GlobalCookieManager;
 import lombok.extern.slf4j.Slf4j;
 
@@ -46,11 +49,68 @@ public class HttpReq {
         req.header(Header.USER_AGENT, ua);
     }
 
-    public static HttpRequest post(String url) {
-        HttpRequest req = HttpRequestPlus.post(url);
+    /**
+     * 获取域名映射规则
+     * 使用规则内容的 md5 作为缓存 key, 避免每次请求重复解析
+     *
+     * @return 映射规则
+     */
+    private static List<Pair<String, String>> domainMappingRules() {
+        String domainMapping = ConfigUtil.CONFIG.getDomainMapping();
+        if (StrUtil.isBlank(domainMapping)) {
+            return List.of();
+        }
+
+        String key = StrFormatter.format("domainMapping:{}", SecureUtil.md5(domainMapping));
+
+        List<Pair<String, String>> rules = CacheUtils.get(key);
+        if (Objects.nonNull(rules)) {
+            return rules;
+        }
+
+        rules = URLUtils.parseDomainMapping(domainMapping);
+
+        CacheUtils.put(key, rules, TimeUnit.MINUTES.toMillis(10));
+
+        return rules;
+    }
+
+    /**
+     * 应用域名映射
+     *
+     * @param url 原始链接
+     * @return 映射后的链接
+     */
+    private static String applyDomainMapping(String url) {
+        List<Pair<String, String>> rules = domainMappingRules();
+        if (rules.isEmpty()) {
+            return url;
+        }
+
+        String mappedUrl = URLUtils.mapDomain(url, rules);
+        if (!Objects.equals(url, mappedUrl)) {
+            log.debug("域名映射: {} -> {}", url, mappedUrl);
+        }
+        return mappedUrl;
+    }
+
+    /**
+     * 创建请求
+     *
+     * @param method 请求方式
+     * @param url    原始链接
+     * @return HttpRequest
+     */
+    private static HttpRequest of(Method method, String url) {
+        HttpRequest req = HttpRequestPlus.of(applyDomainMapping(url)).method(method);
         config(req);
-        setProxy(req);
+        // 使用原始链接判断是否需要代理, 避免映射后的域名导致 proxyList 失效
+        setProxy(req, ConfigUtil.CONFIG, url);
         return req;
+    }
+
+    public static HttpRequest post(String url) {
+        return of(Method.POST, url);
     }
 
     public static HttpRequest post(String url, Object body) {
@@ -61,33 +121,15 @@ public class HttpReq {
     }
 
     public static HttpRequest get(String url) {
-        HttpRequest req = HttpRequestPlus.get(url);
-        config(req);
-        setProxy(req);
-        return req;
+        return of(Method.GET, url);
     }
 
     public static HttpRequest put(String url) {
-        HttpRequest req = HttpRequestPlus.put(url);
-        config(req);
-        setProxy(req);
-        return req;
+        return of(Method.PUT, url);
     }
 
     public static HttpRequest delete(String url) {
-        HttpRequest req = HttpRequestPlus.delete(url);
-        config(req);
-        setProxy(req);
-        return req;
-    }
-
-    /**
-     * 设置代理
-     *
-     * @param req HttpRequest
-     */
-    public static void setProxy(HttpRequest req) {
-        setProxy(req, ConfigUtil.CONFIG);
+        return of(Method.DELETE, url);
     }
 
     /**
@@ -95,9 +137,9 @@ public class HttpReq {
      *
      * @param req    HttpRequest
      * @param config 设置
+     * @param url    用于判断是否需要代理的链接, 应传入映射前的原始链接
      */
-    public static void setProxy(HttpRequest req, Config config) {
-        String url = req.getUrl();
+    public static void setProxy(HttpRequest req, Config config, String url) {
         Boolean proxy = config.getProxy();
         if (!proxy) {
             log.debug("代理未开启 {}", url);
