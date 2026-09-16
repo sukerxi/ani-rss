@@ -5,6 +5,9 @@ on:
     branches:
       - main
   workflow_dispatch:
+permissions:
+  contents: read
+  packages: write    # ← 关键：授予 GHCR 写入权限
 jobs:
   build:
     runs-on: ubuntu-latest
