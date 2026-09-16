@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
   packages: write    # ← 关键：授予 GHCR 写入权限
+  id-token: write
 jobs:
   build:
     runs-on: ubuntu-latest
