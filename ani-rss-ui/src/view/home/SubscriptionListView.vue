@@ -3,7 +3,11 @@
   <PlayListView ref="playListRef"/>
   <CoverView ref="coverRef"/>
   <DelAniView ref="delAniRef"/>
+  <ImportAniView ref="importAniRef" @callback="getList"/>
   <BgmRateView ref="bgmRateRef"/>
+  <SubscriptionContextMenu ref="contextMenuRef"
+                           @delete="item => delAniRef?.show([item])"
+                           @import="importAniRef?.show"/>
   <div class="list-container" v-loading="loading">
     <el-scrollbar class="hide-scrollbar">
       <div class="list-content">
@@ -13,7 +17,8 @@
               {{ weekItem.weekLabel }}
             </h2>
             <div :class="gridClass">
-              <div v-for="item in weekItem.items" :key="item.id">
+              <div v-for="item in weekItem.items" :key="item.id"
+                   @contextmenu.prevent="openContextMenu($event, item)">
                 <component
                     :is="viewComponent"
                     :item="item"
@@ -29,7 +34,8 @@
         </template>
         <template v-else>
           <div :class="gridClass">
-            <div v-for="item in flatFilterList" :key="item.id">
+            <div v-for="item in flatFilterList" :key="item.id"
+                 @contextmenu.prevent="openContextMenu($event, item)">
               <component
                   :is="viewComponent"
                   :item="item"
@@ -54,6 +60,8 @@ import EditAniView from "./EditAniView.vue";
 import PlayListView from "@/view/play/PlayListView.vue";
 import CoverView from "./CoverView.vue";
 import DelAniView from "./DelAniView.vue";
+import ImportAniView from "@/view/home/ImportAniView.vue";
+import SubscriptionContextMenu from "@/view/home/SubscriptionContextMenu.vue";
 import BgmRateView from "./BgmRateView.vue";
 import {fromNow} from "@/js/format.js";
 import {listAni} from "@/js/http.js";
@@ -73,9 +81,15 @@ const emit = defineEmits(['loaded'])
 
 const editAniRef = ref()
 const delAniRef = ref()
+const importAniRef = ref()
 const coverRef = ref()
 const playListRef = ref()
 const bgmRateRef = ref()
+const contextMenuRef = ref()
+
+const openContextMenu = (event, item) => {
+  contextMenuRef.value?.open(event, item)
+}
 
 const weekList = ref([])
 const filterList = ref([])
