@@ -32,6 +32,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * BGM
@@ -586,36 +588,39 @@ public class BgmUtil {
         return 1;
     }
 
+    /**
+     * 季数解析规则，<b>顺序即优先级</b>，首个成功解析的规则生效。
+     */
+    private static final List<Pattern> SEASON_REGEX_LIST = List.of(
+            // 第一季 第一期
+            Pattern.compile("第 ?([一二三四五六七八九十百千]+) ?[季期]"),
+            // Season 1
+            Pattern.compile("[Ss]eason ?(\\d+)"),
+            // 1st Season
+            Pattern.compile("(\\d+)(st|nd|rd|th) ?[Ss]eason"),
+            // S1 S01
+            Pattern.compile("[Ss](\\d+)$")
+    );
+
     public static Integer getSeasonByName(String name) {
-        int season = 1;
-
-        List<String> regexList = List.of(
-                // 第一季 第一期
-                "第 ?([一二三四五六七八九十百千]+) ?[季期]",
-                // Season 1
-                "[Ss]eason ?(\\d+)",
-                // 1st Season
-                "(\\d+)(st|nd|rd|th) ?[Ss]eason",
-                // S1 S01
-                "[Ss](\\d+)$"
-        );
-
-        for (String regex : regexList) {
-            if (!ReUtil.contains(regex, name)) {
+        for (Pattern pattern : SEASON_REGEX_LIST) {
+            Matcher matcher = pattern.matcher(name);
+            if (!matcher.find()) {
                 continue;
             }
 
             try {
-                String s = ReUtil.get(regex, name, 1);
-                if (NumberUtil.isInteger(s)) {
-                    season = Integer.parseInt(s);
-                } else {
-                    season = Convert.chineseToNumber(s);
+                String s = matcher.group(1);
+                int season = NumberUtil.isInteger(s)
+                        ? Integer.parseInt(s)
+                        : Convert.chineseToNumber(s);
+                if (season >= 1) {
+                    return season;
                 }
             } catch (Exception ignored) {
             }
         }
-        return season;
+        return 1;
     }
 
     /**

@@ -49,8 +49,8 @@ public class RenameUtil {
         itemTitle = itemTitle.replace("+NCOPED", "").trim();
         itemTitle = itemTitle.replace("\n", " ").trim();
         itemTitle = itemTitle.replace("\t", " ").trim();
-        // 去除结尾的 8 位 Hash
-        itemTitle = itemTitle.replaceAll("\\[([A-Z]|\\d){8}]$", "").trim();
+        // 去除结尾的 8 位 Hash（十六进制，兼容大小写）
+        itemTitle = itemTitle.replaceAll("\\[[A-Fa-f0-9]{8}]$", "").trim();
 
         double episode;
         // 是否使用自定义集数规则

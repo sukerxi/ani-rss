@@ -10,6 +10,7 @@ import ani.rss.entity.torrent.TorrentsInfo;
 import ani.rss.entity.torrent.TransmissionRpcBody;
 import ani.rss.entity.torrent.TransmissionTorrentsInfo;
 import ani.rss.entity.web.Header;
+import ani.rss.enums.StringEnum;
 import ani.rss.enums.TorrentsTagEnum;
 import ani.rss.util.basic.HttpReq;
 import ani.rss.util.other.ConfigUtil;
@@ -177,7 +178,7 @@ public class Transmission implements BaseDownload {
         String hash = torrentsInfo.getHash();
         String name = torrentsInfo.getName();
 
-        if (ReUtil.contains("^\\w{40}$", name)) {
+        if (ReUtil.isMatch(StringEnum.INFO_HASH_REG, name)) {
             log.debug("{} 磁力链接还在获取原数据中", name);
             return false;
         }

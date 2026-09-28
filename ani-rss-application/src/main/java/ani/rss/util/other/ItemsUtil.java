@@ -134,7 +134,8 @@ public class ItemsUtil {
                 }
 
                 if ("guid".equals(itemChildNodeName)) {
-                    if (ReUtil.isMatch("^([a-z]|[0-9])+$", itemChild.getTextContent())) {
+                    // 仅当 guid 本身就是 40 位 info hash 时采用，避免把数字 ID、URL 等误当作种子哈希
+                    if (ReUtil.isMatch(StringEnum.INFO_HASH_REG, itemChild.getTextContent())) {
                         infoHash = itemChild.getTextContent();
                     }
                 }
