@@ -254,16 +254,35 @@ public class ItemsUtil {
             items.add(addNewItem);
         }
 
-        items = items.stream()
-                .filter(item -> {
-                    try {
-                        return RenameUtil.rename(ani, item);
-                    } catch (Exception e) {
-                        log.error("解析rss视频集次出现问题");
-                        log.error(e.getMessage(), e);
-                    }
-                    return false;
-                }).toList();
+        List<Item> renameItems = new ArrayList<>();
+        List<String> unrecognizedTitles = new ArrayList<>();
+        for (Item item : items) {
+            boolean keep;
+            try {
+                keep = RenameUtil.rename(ani, item);
+            } catch (Exception e) {
+                log.error("解析rss视频集次出现问题");
+                log.error(e.getMessage(), e);
+                keep = false;
+            }
+            if (keep) {
+                renameItems.add(item);
+            } else if (!ItemsUtil.is5(item.getEpisode())) {
+                // rename 返回 false 有两种：开启 skip5 跳过 x.5 集（此时集数已解析为 x.5），
+                // 以及集数无法识别（集数仍为初始值 1.0）。这里只统计后者，便于排查漏订阅。
+                unrecognizedTitles.add(item.getTitle());
+            }
+        }
+        items = renameItems;
+
+        if (!unrecognizedTitles.isEmpty()) {
+            String preview = CollUtil.join(unrecognizedTitles.stream().limit(3).toList(), " | ");
+            log.info("[{}][{}] 有 {} 个 RSS 条目无法识别集数，已跳过；如确需订阅，请为该订阅配置自定义集数规则: {}",
+                    ani.getTitle(), subgroupName, unrecognizedTitles.size(), preview);
+            if (log.isDebugEnabled()) {
+                unrecognizedTitles.forEach(title -> log.debug("未识别集数的标题: {}", title));
+            }
+        }
         return CollUtil.distinct(items, item -> item.getEpisode().toString(), true);
     }
 

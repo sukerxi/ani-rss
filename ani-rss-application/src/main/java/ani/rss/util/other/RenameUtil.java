@@ -1,5 +1,6 @@
 package ani.rss.util.other;
 
+import ani.rss.commons.EpisodeParser;
 import ani.rss.commons.NumberFormatUtils;
 import ani.rss.entity.*;
 import ani.rss.enums.StringEnum;
@@ -18,6 +19,10 @@ import java.util.*;
 @Slf4j
 public class RenameUtil {
     private static final Config CONFIG = ConfigUtil.CONFIG;
+    /**
+     * 历史内置集数解析正则，现仅作为「自定义集数规则」{@code customEpisodeStr} 的默认模板
+     * （见 ConfigUtil 默认配置）。默认的集数解析已迁移至 {@link EpisodeParser}，不再使用本常量。
+     */
     public static final String REG_STR = "(.*|\\[.*])(( - |Vol |[Ee][Pp]?)\\d+(\\.5)?( ?\\(\\d+\\))?|【\\d+(\\.5)?】|\\[\\d+(\\.5)?( ?\\(\\d+\\))?( ?[vV]\\d)?( ?END)?( ?完)?( ?FIN)?]|第\\d+(\\.5)?[话話集]( - END)?|^\\[TOC].* \\d+|^六四位元字幕组.*★\\d+(\\.5)?★)";
 
     public static Boolean rename(Ani ani, Item item) {
@@ -47,30 +52,35 @@ public class RenameUtil {
         // 去除结尾的 8 位 Hash
         itemTitle = itemTitle.replaceAll("\\[([A-Z]|\\d){8}]$", "").trim();
 
-        String e;
-        // 是否使用自定义剧规则
-        if (customEpisode) {
-            e = ReUtil.get(customEpisodeStr, itemTitle, customEpisodeGroupIndex);
+        double episode;
+        // 是否使用自定义集数规则
+        if (Boolean.TRUE.equals(customEpisode)) {
+            String e = ReUtil.get(customEpisodeStr, itemTitle, customEpisodeGroupIndex);
+            if (StrUtil.isBlank(e)) {
+                log.debug("自定义集数规则未匹配到内容，已跳过该条目: {}", itemTitle);
+                return false;
+            }
+            String customEpisodeNumber = ReUtil.get("\\d+(\\.5)?", e, 0);
+            if (StrUtil.isBlank(customEpisodeNumber)) {
+                log.debug("自定义集数规则未解析到集数，已跳过该条目: {}", itemTitle);
+                return false;
+            }
+            episode = Double.parseDouble(customEpisodeNumber) + offset;
         } else {
-            e = ReUtil.get(REG_STR, itemTitle, 2);
+            EpisodeParser.Result episodeResult = EpisodeParser.parse(itemTitle);
+            if (!episodeResult.present()) {
+                log.debug("无法识别集数，已跳过该条目: {}", itemTitle);
+                return false;
+            }
+            episode = episodeResult.episode() + offset;
         }
 
-        if (StrUtil.isBlank(e)) {
-            return false;
-        }
-
-        String episodeStr = ReUtil.get("\\d+(\\.5)?", e, 0);
-        if (StrUtil.isBlank(episodeStr)) {
-            return false;
-        }
-
-        double episode = Double.parseDouble(episodeStr) + offset;
         item.setEpisode(episode);
 
         String seasonFormat = String.format("%02d", season);
         String episodeFormat = String.format("%02d", (int) episode);
 
-        episodeStr = String.valueOf((int) episode);
+        String episodeStr = String.valueOf((int) episode);
 
         // x.5
         boolean is5 = ItemsUtil.is5(episode);
