@@ -67,7 +67,7 @@
 
 <script setup>
 import {nextTick, onBeforeUnmount, onMounted, ref} from "vue";
-import {ElMessage} from "element-plus";
+import {ElMessage, ElMessageBox} from "element-plus";
 import {
   CircleCheck,
   CircleClose,
@@ -116,18 +116,21 @@ const close = () => {
   current.value = null
 }
 
-const run = async (request, {reload = false} = {}) => {
-  const item = current.value
+const run = async (request, {reload = false} = {}, target = current.value) => {
   close()
-  if (!item) {
+  if (!target) {
     return
   }
-  const res = await request([item.id])
+  const res = await request([target.id])
   ElMessage.success(res.message)
   if (reload) {
     window.$reLoadList?.()
   }
 }
+
+// 已完结：总集数已知且当前进度已达到总集数
+const isFinished = item => !!item.totalEpisodeNumber
+    && Number(item.currentEpisodeNumber) >= Number(item.totalEpisodeNumber)
 
 const updateTotalEpisodeNumber = force => {
   return run(ids => http.updateTotalEpisodeNumber(force, ids), {reload: true})
@@ -138,7 +141,27 @@ const scrape = force => {
 }
 
 const enable = value => {
-  return run(ids => http.batchEnable(value, ids), {reload: true})
+  const item = current.value
+  const request = ids => http.batchEnable(value, ids)
+  // 启用，或订阅已完结：直接执行
+  if (value || !item || isFinished(item)) {
+    return run(request, {reload: true})
+  }
+  // 禁用未完结订阅前二次确认，避免错过后续集数
+  close()
+  const currentEpisode = item.currentEpisodeNumber || 0
+  const totalEpisode = item.totalEpisodeNumber || '*'
+  return ElMessageBox.confirm(
+      `《${item.title}》尚未完结（${currentEpisode} / ${totalEpisode}），禁用后将不再自动下载后续集数，是否确认禁用？`,
+      '禁用订阅',
+      {
+        confirmButtonText: '确认禁用',
+        confirmButtonClass: 'is-text is-has-bg el-button--danger',
+        cancelButtonText: '取消',
+        cancelButtonClass: 'is-text is-has-bg',
+        type: 'warning'
+      }
+  ).then(() => run(request, {reload: true}, item)).catch(() => {})
 }
 
 const importData = () => {
