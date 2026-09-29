@@ -8,8 +8,13 @@ import ani.rss.entity.CustomTmdbConfig;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.text.StrFormatter;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.http.HttpStatus;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 import wushuo.tmdb.api.TmdbUtil;
+import wushuo.tmdb.api.common.GsonStatic;
+import wushuo.tmdb.api.common.HttpReq;
 import wushuo.tmdb.api.entity.*;
 import wushuo.tmdb.api.enums.TmdbTypeEnum;
 
@@ -270,6 +275,56 @@ public class TmdbUtils {
      */
     public static List<TmdbGroup> getTmdbGroup(Tmdb tmdb) {
         return TMDB_UTIL.getTmdbGroup(tmdb);
+    }
+
+    /**
+     * 获取剧集组下的全部分段（episode_group 详情中的 groups）
+     * <p>
+     * 分段的 order 为 1 基，与订阅的 season 对应；
+     * 分段内剧集的 order 为 0 基
+     *
+     * @param groupId 剧集组 id
+     * @return 分段列表
+     */
+    public static List<TmdbSeason> getTmdbGroupSeasonList(String groupId) {
+        if (StrUtil.isBlank(groupId)) {
+            return List.of();
+        }
+
+        String key = StrFormatter.format("TMDB_getTmdbGroupSeasonList:{}", groupId);
+
+        List<TmdbSeason> cacheList = CacheUtils.get(key);
+        if (Objects.nonNull(cacheList)) {
+            return cacheList;
+        }
+
+        CustomTmdbConfig config = new CustomTmdbConfig();
+        String url = StrFormatter.format("{}/3/tv/episode_group/{}", config.getTmdbApi(), groupId);
+
+        JsonObject responseObject = HttpReq.get(url)
+                .proxy(config)
+                .timeout(5000)
+                .form("api_key", config.getTmdbApiKey())
+                .form("include_adult", "true")
+                .form("language", config.getTmdbLanguage())
+                .thenFunction(response -> {
+                    if (response.getStatus() == HttpStatus.HTTP_NOT_FOUND) {
+                        return null;
+                    }
+                    HttpReq.assertStatus(response);
+                    return GsonStatic.fromJson(response.body(), JsonObject.class);
+                });
+
+        if (Objects.isNull(responseObject)) {
+            CacheUtils.put(key, List.of(), 1000 * 10);
+            return List.of();
+        }
+
+        JsonArray groups = responseObject.getAsJsonArray("groups");
+        List<TmdbSeason> seasonList = GsonStatic.fromJsonList(groups, TmdbSeason.class);
+
+        CacheUtils.put(key, seasonList, TimeUnit.MINUTES.toMillis(5));
+        return seasonList;
     }
 
     /**

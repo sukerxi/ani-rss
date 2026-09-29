@@ -145,6 +145,13 @@ export let getThemoviedbName = (ani) => api.post('api/getThemoviedbName', ani)
 export let getThemoviedbGroup = (ani) => api.post('api/getThemoviedbGroup', ani)
 
 /**
+ * 获取TMDB剧集组分段详情
+ * @param groupId 剧集组 id
+ * @returns {Promise<unknown>}
+ */
+export let getThemoviedbGroupDetail = (groupId) => api.post('api/getThemoviedbGroupDetail', {groupId})
+
+/**
  * 测试通知
  * @param notificationConfig 通知设置
  * @returns {Promise<unknown>}

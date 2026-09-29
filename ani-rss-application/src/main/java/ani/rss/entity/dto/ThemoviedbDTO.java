@@ -11,4 +11,8 @@ public class ThemoviedbDTO implements Serializable {
     private String tmdbId;
     private String title;
     private Boolean ova;
+    /**
+     * 剧集组 id
+     */
+    private String groupId;
 }
