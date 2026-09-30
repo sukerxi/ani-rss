@@ -60,16 +60,137 @@ const showPlaylist = useLocalStorage('show-playlist', true)
 const showLastDownloadTime = useLocalStorage("show-last-download-time", true);
 
 /**
- * 强调色
+ * 强调色（默认落日珊瑚色）
  */
-const color = useLocalStorage('--el-color-primary', '#409eff')
+const color = useLocalStorage('--el-color-primary', '#ff7e5f')
+
+/**
+ * 当前主题（sunset / sakura / sky / mint / classic / custom）
+ * custom 表示用户通过取色器自定义强调色，品牌渐变仍沿用上次预设
+ */
+const appTheme = useLocalStorage('app-theme', 'sunset')
+
+/**
+ * 主题预设：primary 为强调色，gradient 用于色卡预览，
+ * meta 为浅/深色下的移动端状态栏颜色
+ */
+const themePresets = [
+    {
+        name: 'sunset',
+        label: '落日橙粉',
+        primary: '#ff7e5f',
+        gradient: 'linear-gradient(135deg, #ffa45c, #ff5f8d)',
+        meta: {light: '#fdf3ee', dark: '#161014'}
+    },
+    {
+        name: 'sakura',
+        label: '樱花粉紫',
+        primary: '#f2609b',
+        gradient: 'linear-gradient(135deg, #ff9ec7, #b084ff)',
+        meta: {light: '#fdf1f7', dark: '#170f16'}
+    },
+    {
+        name: 'sky',
+        label: '蓝紫晴空',
+        primary: '#4a86f5',
+        gradient: 'linear-gradient(135deg, #58c2ff, #7c7cff)',
+        meta: {light: '#f0f5fd', dark: '#0e1219'}
+    },
+    {
+        name: 'mint',
+        label: '薄荷青',
+        primary: '#12b89a',
+        gradient: 'linear-gradient(135deg, #3fe0b4, #2fb6e0)',
+        meta: {light: '#effaf5', dark: '#0c1514'}
+    },
+    {
+        name: 'classic',
+        label: '经典蓝',
+        primary: '#409eff',
+        gradient: 'linear-gradient(135deg, #79c2ff, #409eff)',
+        meta: {light: '#f5f7fa', dark: '#10131a'}
+    }
+]
+
+/**
+ * 十六进制颜色转 RGB，非法值返回 null
+ */
+const hexToRgb = hex => {
+    let value = String(hex || '').trim().replace('#', '')
+    if (value.length === 3) {
+        value = value.split('').map(c => c + c).join('')
+    }
+    if (!/^[0-9a-fA-F]{6}$/.test(value)) {
+        return null
+    }
+    const num = parseInt(value, 16)
+    return [(num >> 16) & 255, (num >> 8) & 255, num & 255]
+}
+
+/**
+ * 颜色混合：base 与 other 按权重混合（w 为 other 占比）
+ */
+const mixRgb = (base, other, weight) =>
+    base.map((channel, index) => Math.round(channel * (1 - weight) + other[index] * weight))
+
+const toHex = rgb => '#' + rgb.map(channel => channel.toString(16).padStart(2, '0')).join('')
 
 /**
  * 改动强调色
+ * Element Plus 的 light-k 为「混入 k*10% 白色」；
+ * 深色模式下对应「混入深灰 #141414」，两套派生色同时写入，由 CSS 按模式取用
  */
-const colorChange = (v) => {
+const colorChange = v => {
+    const rgb = hexToRgb(v) || hexToRgb(color.value)
+    if (!rgb) {
+        return
+    }
     const el = document.documentElement
-    el.style.setProperty('--el-color-primary', v)
+    el.style.setProperty('--brand-primary', toHex(rgb))
+    el.style.setProperty('--brand-light-2', toHex(mixRgb(rgb, [0, 0, 0], 0.2)))
+    ;[3, 5, 7, 8, 9].forEach(k => {
+        el.style.setProperty(`--brand-light-${k}`, toHex(mixRgb(rgb, [255, 255, 255], k / 10)))
+        el.style.setProperty(`--brand-dark-${k}`, toHex(mixRgb(rgb, [20, 20, 20], 1 - k / 10)))
+    })
+}
+
+/**
+ * 按当前主题与浅/深色更新移动端状态栏颜色
+ */
+const updateThemeColorMeta = dark => {
+    const meta = document.getElementById('themeColorMeta')
+    if (!meta) {
+        return
+    }
+    const preset = themePresets.find(item => item.name === appTheme.value)
+    meta.content = preset
+        ? preset.meta[dark ? 'dark' : 'light']
+        : (dark ? '#161014' : '#fdf3ee')
+}
+
+/**
+ * 应用预设主题：设置 data-theme、同步强调色与派生色
+ */
+const applyTheme = name => {
+    const preset = themePresets.find(item => item.name === name)
+    if (!preset) {
+        return
+    }
+    appTheme.value = preset.name
+    document.documentElement.dataset.theme = preset.name
+    color.value = preset.primary
+    colorChange(preset.primary)
+    updateThemeColorMeta(document.documentElement.classList.contains('dark'))
+}
+
+/**
+ * 自定义强调色：仅替换强调色与派生色，主题渐变保持当前预设
+ */
+const applyCustomColor = v => {
+    appTheme.value = 'custom'
+    document.documentElement.dataset.theme = 'custom'
+    color.value = v
+    colorChange(v)
 }
 
 /**
@@ -82,13 +203,18 @@ const initTheme = () => {
     useDark({
         onChanged: dark => {
             // 自动根据夜间模式修改沉浸式状态栏
-            const meta = document.getElementById('themeColorMeta');
-            meta.content = dark ? '#000000' : '#ffffff';
+            updateThemeColorMeta(dark)
         }
     })
 
-    // 修改强调色
-    colorChange(color.value)
+    // 恢复主题预设（自定义强调色时仅刷派生色）
+    const preset = themePresets.find(item => item.name === appTheme.value)
+    document.documentElement.dataset.theme = preset ? preset.name : 'custom'
+    colorChange(preset ? preset.primary : color.value)
+    if (preset) {
+        color.value = preset.primary
+    }
+    updateThemeColorMeta(document.documentElement.classList.contains('dark'))
 }
 
 /**
@@ -162,6 +288,10 @@ export {
     showPlaylist,
     showLastDownloadTime,
     color,
+    appTheme,
+    themePresets,
+    applyTheme,
+    applyCustomColor,
     colorChange,
     init,
     initTheme,

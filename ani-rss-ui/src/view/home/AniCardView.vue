@@ -187,8 +187,13 @@ const handleCoverClick = () => {
 }
 
 .list-card-score {
-  color: #E800A4;
+  font-weight: 700;
   cursor: pointer;
+  background: var(--brand-gradient);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
 }
 
 .list-card-url {

@@ -153,9 +153,19 @@ const emit = defineEmits(['edit', 'playlist', 'cover', 'del', 'rate'])
   width: 100%;
   aspect-ratio: 2 / 3;
   overflow: hidden;
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 8px;
+  border-radius: 12px;
   background-color: var(--el-fill-color-light);
+  box-shadow: var(--app-cover-shadow);
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
+}
+
+.cover-card:hover .cover-image-container:not(.is-disabled) {
+  transform: translateY(-3px);
+  box-shadow: var(--app-cover-shadow-hover);
+}
+
+.cover-image-container.is-disabled {
+  box-shadow: none;
 }
 
 .cover-image-container:after {
@@ -204,17 +214,29 @@ const emit = defineEmits(['edit', 'playlist', 'cover', 'del', 'rate'])
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 2px;
   min-width: 24px;
-  height: 20px;
-  padding: 0 7px;
+  height: 22px;
+  padding: 0 8px;
   border: 0;
   border-radius: 999px;
   color: #ffffff;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 700;
   line-height: 1;
   cursor: pointer;
-  background-color: var(--el-color-primary);
+  background: var(--brand-gradient);
+  box-shadow: 0 4px 12px -4px var(--brand-glow);
+  transition: transform 0.16s ease;
+}
+
+.cover-score::before {
+  content: "★";
+  font-size: 10px;
+}
+
+.cover-score:hover {
+  transform: scale(1.06);
 }
 
 .cover-disabled-label {

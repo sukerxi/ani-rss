@@ -121,7 +121,7 @@ onMounted(() => {
     container: '.art-app',
     url: src,
     type: extName,
-    theme: '#646cff',
+    theme: (getComputedStyle(document.documentElement).getPropertyValue('--brand-primary') || '#ff7e5f').trim(),
     playbackRate: true,
     aspectRatio: true,
     screenshot: true,

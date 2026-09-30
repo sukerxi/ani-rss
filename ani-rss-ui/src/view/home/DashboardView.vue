@@ -326,8 +326,10 @@ onUnmounted(stopPolling)
   align-items: center;
   gap: 10px;
   padding: 12px;
-  border-radius: 8px;
+  border: 1px solid var(--app-card-border);
+  border-radius: 12px;
   background-color: var(--el-bg-color);
+  box-shadow: var(--app-card-shadow);
 }
 
 .metric-item.is-link {
@@ -355,8 +357,9 @@ onUnmounted(stopPolling)
 }
 
 .metric-icon.subscriptions {
-  color: var(--el-color-primary);
-  background-color: var(--el-color-primary-light-9);
+  color: #ffffff;
+  background: var(--brand-gradient);
+  box-shadow: 0 6px 14px -6px var(--brand-glow);
 }
 
 .metric-icon.enabled {
@@ -395,9 +398,11 @@ onUnmounted(stopPolling)
 
 .dashboard-section {
   min-width: 0;
-  padding: 12px;
-  border-radius: 8px;
+  padding: 14px;
+  border: 1px solid var(--app-card-border);
+  border-radius: 12px;
   background-color: var(--el-bg-color);
+  box-shadow: var(--app-card-shadow);
 }
 
 .section-title {

@@ -189,7 +189,7 @@ const emit = defineEmits(['callback'])
 }
 
 .upload-sub-text em {
-  color: #409eff;
+  color: var(--el-color-primary);
   font-style: normal;
 }
 

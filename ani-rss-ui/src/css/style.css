@@ -1,40 +1,333 @@
-/* 深色模式 */
-html.dark {
-    --body-background-color: #000000;
-    --el-bg-color: #2D2E2F;
-    --el-bg-color-overlay: var(--el-bg-color);
-    --el-fill-color-blank: var(--el-bg-color);
-    --el-border-color: #414243;
-    --el-border-color-light: #4C4D4F;
-
-    .el-card {
-        border: 1px solid var(--el-border-color);
-        box-shadow: none;
-    }
-}
+/* ============================================================
+   主题系统
+   - 结构 token（圆角/边框/派生色映射）与主题无关
+   - 品牌 token 按 html[data-theme] 切换：sunset / sakura /
+     sky / mint / classic，每套含浅色与深色两组
+   - 品牌渐变只用于点缀（主按钮 / 激活态 / 评分章 / 登录页）
+   ============================================================ */
 
 :root {
-    --body-background-color: #f7f5fa;
+    /* 强调色兜底（global.js applyTheme/colorChange 会内联覆盖派生色） */
+    --brand-primary: #ff7e5f;
+    --el-color-primary: var(--brand-primary);
+    --el-color-primary-dark-2: var(--brand-light-2);
+    --el-color-primary-light-3: var(--brand-light-3);
+    --el-color-primary-light-5: var(--brand-light-5);
+    --el-color-primary-light-7: var(--brand-light-7);
+    --el-color-primary-light-8: var(--brand-light-8);
+    --el-color-primary-light-9: var(--brand-light-9);
 
-    /* 侧边栏宽度（桌面端） */
+    /* 渐变配方（端点由当前主题提供） */
+    --brand-gradient: linear-gradient(135deg, var(--brand-from) 0%, var(--brand-to) 100%);
+    --brand-gradient-hover: linear-gradient(135deg, var(--brand-from-hover) 0%, var(--brand-to-hover) 100%);
+
+    /* 侧边栏（桌面端，宽度由外壳 .app-shell 提供） */
     --app-nav-width: 132px;
+    --app-nav-bg: rgba(255, 255, 255, 0.82);
+    --app-nav-border: rgba(228, 128, 96, 0.16);
 
-    /* 全局圆角优化：更圆润 */
+    /* 全局圆角 */
     --el-border-radius-small: 8px;
     --el-border-radius-base: 12px;
     --el-border-radius-round: 24px;
     --app-dialog-border-radius: 16px;
 
-    /* 全局边框淡化：使用更浅的颜色 */
+    /* 全局边框淡化 */
     --el-border-color: var(--el-border-color-lighter);
     --el-border-color-light: var(--el-border-color-extra-light);
 
     /* 折叠面板内边距 */
     --el-collapse-item-content-padding: 16px;
+
+    /* ---------- sunset · 落日橙粉（默认/兜底） ---------- */
+    --brand-from: #ffa45c;
+    --brand-to: #ff5f8d;
+    --brand-from-hover: #ffb372;
+    --brand-to-hover: #ff75a2;
+    --brand-soft: rgba(255, 116, 96, 0.12);
+    --brand-soft-hover: rgba(255, 116, 96, 0.20);
+    --brand-glow: rgba(255, 102, 122, 0.36);
+
+    --body-background-color: #fdf3ee;
+    --body-decoration:
+            radial-gradient(760px 500px at 2% -12%, rgba(255, 158, 105, 0.22), transparent 62%),
+            radial-gradient(880px 560px at 104% -8%, rgba(255, 110, 158, 0.15), transparent 60%);
+
+    --app-card-border: #f7e4dc;
+    --app-card-shadow: 0 10px 26px -14px rgba(214, 100, 80, 0.28), 0 2px 6px rgba(214, 100, 80, 0.06);
+    --app-cover-shadow: 0 10px 24px -12px rgba(196, 92, 74, 0.40), 0 2px 6px rgba(196, 92, 74, 0.08);
+    --app-cover-shadow-hover: 0 20px 36px -14px var(--brand-glow), 0 4px 10px rgba(214, 100, 80, 0.10);
+}
+
+/* ---------- sakura · 樱花粉紫 ---------- */
+:root[data-theme='sakura'] {
+    --brand-from: #ff9ec7;
+    --brand-to: #b084ff;
+    --brand-from-hover: #ffb1d3;
+    --brand-to-hover: #c3a0ff;
+    --brand-soft: rgba(242, 96, 155, 0.10);
+    --brand-soft-hover: rgba(242, 96, 155, 0.18);
+    --brand-glow: rgba(196, 110, 220, 0.34);
+
+    --body-background-color: #fdf1f7;
+    --body-decoration:
+            radial-gradient(760px 500px at 2% -12%, rgba(255, 158, 199, 0.22), transparent 62%),
+            radial-gradient(880px 560px at 104% -8%, rgba(176, 132, 255, 0.16), transparent 60%);
+
+    --app-nav-border: rgba(214, 120, 170, 0.16);
+    --app-card-border: #f6e0ee;
+    --app-card-shadow: 0 10px 26px -14px rgba(200, 100, 160, 0.26), 0 2px 6px rgba(200, 100, 160, 0.06);
+    --app-cover-shadow: 0 10px 24px -12px rgba(180, 86, 140, 0.38), 0 2px 6px rgba(180, 86, 140, 0.08);
+    --app-cover-shadow-hover: 0 20px 36px -14px var(--brand-glow), 0 4px 10px rgba(190, 110, 200, 0.10);
+}
+
+/* ---------- sky · 蓝紫晴空 ---------- */
+:root[data-theme='sky'] {
+    --brand-from: #58c2ff;
+    --brand-to: #7c7cff;
+    --brand-from-hover: #76d0ff;
+    --brand-to-hover: #9595ff;
+    --brand-soft: rgba(74, 134, 245, 0.10);
+    --brand-soft-hover: rgba(74, 134, 245, 0.18);
+    --brand-glow: rgba(96, 120, 255, 0.34);
+
+    --body-background-color: #f0f5fd;
+    --body-decoration:
+            radial-gradient(760px 500px at 2% -12%, rgba(96, 190, 255, 0.20), transparent 62%),
+            radial-gradient(880px 560px at 104% -8%, rgba(130, 130, 255, 0.15), transparent 60%);
+
+    --app-nav-border: rgba(110, 150, 220, 0.18);
+    --app-card-border: #e1ebf9;
+    --app-card-shadow: 0 10px 26px -14px rgba(80, 120, 200, 0.26), 0 2px 6px rgba(80, 120, 200, 0.06);
+    --app-cover-shadow: 0 10px 24px -12px rgba(70, 110, 190, 0.36), 0 2px 6px rgba(70, 110, 190, 0.08);
+    --app-cover-shadow-hover: 0 20px 36px -14px var(--brand-glow), 0 4px 10px rgba(90, 120, 220, 0.10);
+}
+
+/* ---------- mint · 薄荷青 ---------- */
+:root[data-theme='mint'] {
+    --brand-from: #3fe0b4;
+    --brand-to: #2fb6e0;
+    --brand-from-hover: #66e9c4;
+    --brand-to-hover: #55c6e8;
+    --brand-soft: rgba(18, 184, 154, 0.10);
+    --brand-soft-hover: rgba(18, 184, 154, 0.18);
+    --brand-glow: rgba(32, 190, 170, 0.32);
+
+    --body-background-color: #effaf5;
+    --body-decoration:
+            radial-gradient(760px 500px at 2% -12%, rgba(80, 220, 180, 0.20), transparent 62%),
+            radial-gradient(880px 560px at 104% -8%, rgba(60, 190, 220, 0.14), transparent 60%);
+
+    --app-nav-border: rgba(90, 190, 160, 0.20);
+    --app-card-border: #dcf3ea;
+    --app-card-shadow: 0 10px 26px -14px rgba(60, 170, 140, 0.26), 0 2px 6px rgba(60, 170, 140, 0.06);
+    --app-cover-shadow: 0 10px 24px -12px rgba(50, 160, 130, 0.34), 0 2px 6px rgba(50, 160, 130, 0.08);
+    --app-cover-shadow-hover: 0 20px 36px -14px var(--brand-glow), 0 4px 10px rgba(60, 190, 170, 0.10);
+}
+
+/* ---------- classic · 经典蓝 ---------- */
+:root[data-theme='classic'] {
+    --brand-from: #79c2ff;
+    --brand-to: #409eff;
+    --brand-from-hover: #95d0ff;
+    --brand-to-hover: #5cabff;
+    --brand-soft: rgba(64, 158, 255, 0.10);
+    --brand-soft-hover: rgba(64, 158, 255, 0.18);
+    --brand-glow: rgba(64, 158, 255, 0.32);
+
+    --body-background-color: #f5f7fa;
+    --body-decoration:
+            radial-gradient(760px 500px at 2% -12%, rgba(110, 180, 255, 0.16), transparent 62%),
+            radial-gradient(880px 560px at 104% -8%, rgba(140, 160, 255, 0.10), transparent 60%);
+
+    --app-nav-border: rgba(150, 180, 220, 0.25);
+    --app-card-border: #e6ecf4;
+    --app-card-shadow: 0 10px 26px -14px rgba(90, 120, 170, 0.22), 0 2px 6px rgba(90, 120, 170, 0.05);
+    --app-cover-shadow: 0 10px 24px -12px rgba(70, 110, 170, 0.30), 0 2px 6px rgba(70, 110, 170, 0.06);
+    --app-cover-shadow-hover: 0 20px 36px -14px var(--brand-glow), 0 4px 10px rgba(90, 140, 220, 0.08);
+}
+
+/* ================= 深色模式（结构与 sunset 兜底） ================= */
+html.dark {
+    --el-text-color-primary: #f1eef1;
+    --el-text-color-regular: #cac6cc;
+
+    /* 覆盖 Element Plus 深色表中写死的 #409eff（其特异性为 html.dark） */
+    --el-color-primary: var(--brand-primary);
+    /* 深色下强调色派生色换一套（混深灰而非白） */
+    --el-color-primary-dark-2: var(--brand-primary);
+    --el-color-primary-light-3: var(--brand-dark-3);
+    --el-color-primary-light-5: var(--brand-dark-5);
+    --el-color-primary-light-7: var(--brand-dark-7);
+    --el-color-primary-light-8: var(--brand-dark-8);
+    --el-color-primary-light-9: var(--brand-dark-9);
+
+    /* Element Plus 深色表面色（sunset 暖夜兜底） */
+    --el-bg-color: #231a20;
+    --el-bg-color-overlay: #2c2128;
+    --el-fill-color-blank: var(--el-bg-color);
+    --el-fill-color: #35272e;
+    --el-fill-color-light: #2b2027;
+    --el-fill-color-lighter: #261b21;
+    --el-fill-color-extra-light: #21181e;
+    --el-border-color: #4a3840;
+    --el-border-color-light: #40303a;
+    --el-border-color-lighter: #372932;
+    --el-border-color-extra-light: #2f232b;
+
+    /* sunset 深色品牌与表面 */
+    --brand-from: #ffae68;
+    --brand-to: #ff6c9a;
+    --brand-from-hover: #ffbe7e;
+    --brand-to-hover: #ff7ea8;
+    --brand-soft: rgba(255, 142, 100, 0.16);
+    --brand-soft-hover: rgba(255, 142, 100, 0.24);
+    --brand-glow: rgba(255, 122, 142, 0.40);
+
+    --app-nav-bg: rgba(27, 20, 25, 0.80);
+    --app-nav-border: rgba(255, 255, 255, 0.07);
+
+    --body-background-color: #161014;
+    --body-decoration:
+            radial-gradient(720px 500px at 0% -12%, rgba(255, 138, 84, 0.14), transparent 62%),
+            radial-gradient(860px 580px at 106% -8%, rgba(255, 92, 142, 0.12), transparent 60%);
+
+    --app-card-border: #3a2b33;
+    --app-card-shadow: none;
+    --app-cover-shadow: 0 10px 24px -12px rgba(0, 0, 0, 0.55);
+    --app-cover-shadow-hover: 0 18px 34px -12px rgba(0, 0, 0, 0.65), 0 0 18px -6px rgba(255, 122, 142, 0.35);
+}
+
+/* sakura 深色 */
+html.dark[data-theme='sakura'] {
+    --el-bg-color: #231820;
+    --el-bg-color-overlay: #2d1f29;
+    --el-fill-color: #372633;
+    --el-fill-color-light: #2d202a;
+    --el-fill-color-lighter: #271b23;
+    --el-fill-color-extra-light: #20161d;
+    --el-border-color: #4d3545;
+    --el-border-color-light: #42303d;
+    --el-border-color-lighter: #392833;
+    --el-border-color-extra-light: #30212b;
+
+    --brand-from: #ffaecf;
+    --brand-to: #c39bff;
+    --brand-from-hover: #ffc0dc;
+    --brand-to-hover: #d4b4ff;
+    --brand-soft: rgba(255, 140, 190, 0.16);
+    --brand-soft-hover: rgba(255, 140, 190, 0.24);
+    --brand-glow: rgba(210, 140, 255, 0.38);
+
+    --app-nav-bg: rgba(26, 16, 24, 0.80);
+    --body-background-color: #170f16;
+    --body-decoration:
+            radial-gradient(720px 500px at 0% -12%, rgba(255, 130, 180, 0.13), transparent 62%),
+            radial-gradient(860px 580px at 106% -8%, rgba(150, 110, 230, 0.13), transparent 60%);
+    --app-card-border: #3c2a37;
+    --app-cover-shadow-hover: 0 18px 34px -12px rgba(0, 0, 0, 0.65), 0 0 18px -6px rgba(210, 140, 255, 0.32);
+}
+
+/* sky 深色 */
+html.dark[data-theme='sky'] {
+    --el-bg-color: #161b26;
+    --el-bg-color-overlay: #1d2330;
+    --el-fill-color: #242c3c;
+    --el-fill-color-light: #1d2431;
+    --el-fill-color-lighter: #181e29;
+    --el-fill-color-extra-light: #131822;
+    --el-border-color: #33405a;
+    --el-border-color-light: #2c3850;
+    --el-border-color-lighter: #263045;
+    --el-border-color-extra-light: #1f2839;
+
+    --brand-from: #74c9ff;
+    --brand-to: #9593ff;
+    --brand-from-hover: #8fd4ff;
+    --brand-to-hover: #aaa9ff;
+    --brand-soft: rgba(120, 180, 255, 0.14);
+    --brand-soft-hover: rgba(120, 180, 255, 0.22);
+    --brand-glow: rgba(110, 150, 255, 0.38);
+
+    --app-nav-bg: rgba(15, 19, 28, 0.82);
+    --body-background-color: #0e1219;
+    --body-decoration:
+            radial-gradient(720px 500px at 0% -12%, rgba(80, 160, 255, 0.13), transparent 62%),
+            radial-gradient(860px 580px at 106% -8%, rgba(120, 120, 255, 0.12), transparent 60%);
+    --app-card-border: #27303f;
+    --app-cover-shadow-hover: 0 18px 34px -12px rgba(0, 0, 0, 0.65), 0 0 18px -6px rgba(110, 160, 255, 0.32);
+}
+
+/* mint 深色 */
+html.dark[data-theme='mint'] {
+    --el-bg-color: #13201d;
+    --el-bg-color-overlay: #1a2a26;
+    --el-fill-color: #21332e;
+    --el-fill-color-light: #1a2a26;
+    --el-fill-color-lighter: #172320;
+    --el-fill-color-extra-light: #111b19;
+    --el-border-color: #2c4a42;
+    --el-border-color-light: #27403a;
+    --el-border-color-lighter: #22352f;
+    --el-border-color-extra-light: #1c2c28;
+
+    --brand-from: #5fe8c2;
+    --brand-to: #4fc8e6;
+    --brand-from-hover: #7eeed0;
+    --brand-to-hover: #70d4ec;
+    --brand-soft: rgba(90, 220, 190, 0.14);
+    --brand-soft-hover: rgba(90, 220, 190, 0.22);
+    --brand-glow: rgba(70, 215, 190, 0.34);
+
+    --app-nav-bg: rgba(12, 22, 21, 0.82);
+    --body-background-color: #0c1514;
+    --body-decoration:
+            radial-gradient(720px 500px at 0% -12%, rgba(70, 210, 170, 0.12), transparent 62%),
+            radial-gradient(860px 580px at 106% -8%, rgba(60, 190, 220, 0.10), transparent 60%);
+    --app-card-border: #223431;
+    --app-cover-shadow-hover: 0 18px 34px -12px rgba(0, 0, 0, 0.65), 0 0 18px -6px rgba(70, 215, 190, 0.30);
+}
+
+/* classic 深色 */
+html.dark[data-theme='classic'] {
+    --el-bg-color: #181b22;
+    --el-bg-color-overlay: #20242d;
+    --el-fill-color: #282d38;
+    --el-fill-color-light: #22262e;
+    --el-fill-color-lighter: #1e2229;
+    --el-fill-color-extra-light: #171a21;
+    --el-border-color: #3a414e;
+    --el-border-color-light: #323a47;
+    --el-border-color-lighter: #2b323e;
+    --el-border-color-extra-light: #252b35;
+
+    --brand-from: #7cc4ff;
+    --brand-to: #409eff;
+    --brand-from-hover: #97d0ff;
+    --brand-to-hover: #5cabff;
+    --brand-soft: rgba(110, 175, 255, 0.14);
+    --brand-soft-hover: rgba(110, 175, 255, 0.22);
+    --brand-glow: rgba(90, 160, 255, 0.34);
+
+    --app-nav-bg: rgba(16, 19, 24, 0.84);
+    --body-background-color: #10131a;
+    --body-decoration:
+            radial-gradient(720px 500px at 0% -12%, rgba(80, 150, 255, 0.12), transparent 62%),
+            radial-gradient(860px 580px at 106% -8%, rgba(100, 140, 255, 0.09), transparent 60%);
+    --app-card-border: #262c36;
+    --app-cover-shadow-hover: 0 18px 34px -12px rgba(0, 0, 0, 0.65), 0 0 18px -6px rgba(90, 160, 255, 0.30);
 }
 
 body {
     background-color: var(--body-background-color);
+    background-image: var(--body-decoration);
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+}
+
+/* 文本选中色 */
+::selection {
+    background: var(--brand-soft-hover);
 }
 
 /* 折叠面板 */
@@ -55,10 +348,10 @@ body {
     }
 }
 
-/* 卡片 去除厚重边框，增加柔和阴影 */
+/* 卡片：暖色描边 + 柔和暖色阴影 */
 .el-card {
-    border: 1px solid var(--el-border-color-extra-light);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.04);
+    border: 1px solid var(--app-card-border);
+    box-shadow: var(--app-card-shadow);
     transition: all 0.3s ease;
 }
 
@@ -269,6 +562,25 @@ html, body, #app {
     border-radius: var(--el-border-radius-base);
 }
 
+/* 主按钮：落日渐变（文字/链接/朴素/禁用态保持 Element Plus 默认） */
+.el-button--primary:not(.is-text):not(.is-link):not(.is-plain):not(.is-disabled) {
+    background: var(--brand-gradient);
+    border-color: transparent;
+    box-shadow: 0 8px 18px -8px var(--brand-glow);
+}
+
+.el-button--primary:not(.is-text):not(.is-link):not(.is-plain):not(.is-disabled):hover,
+.el-button--primary:not(.is-text):not(.is-link):not(.is-plain):not(.is-disabled):focus-visible {
+    background: var(--brand-gradient-hover);
+    border-color: transparent;
+    transform: translateY(-1px);
+}
+
+.el-button--primary:not(.is-text):not(.is-link):not(.is-plain):not(.is-disabled):active {
+    transform: translateY(0);
+    box-shadow: 0 4px 10px -6px var(--brand-glow);
+}
+
 .el-card {
     border-radius: var(--el-border-radius-base);
 }
@@ -311,10 +623,15 @@ html, body, #app {
     transition: color var(--el-transition-duration-fast), background-color var(--el-transition-duration-fast);
 }
 
-.segmented-tabs > .el-tabs__header .el-tabs__item:hover,
-.segmented-tabs > .el-tabs__header .el-tabs__item.is-active {
+.segmented-tabs > .el-tabs__header .el-tabs__item:hover {
     color: var(--el-color-primary);
-    background: var(--el-color-primary-light-9);
+    background: var(--brand-soft);
+}
+
+.segmented-tabs > .el-tabs__header .el-tabs__item.is-active {
+    color: #ffffff;
+    background: var(--brand-gradient);
+    box-shadow: 0 6px 14px -8px var(--brand-glow);
 }
 
 @media (max-width: 700px) {

@@ -43,7 +43,24 @@ defineProps({
 }
 
 .page-header-title {
+  position: relative;
+  padding-left: 12px;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
   line-height: 1.4;
+}
+
+.page-header-title::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--brand-gradient);
 }
 
 .page-header-subtitle {
