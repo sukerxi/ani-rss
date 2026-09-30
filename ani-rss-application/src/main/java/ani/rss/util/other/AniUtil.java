@@ -36,6 +36,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.stream.Collectors;
 
 @Slf4j
 public class AniUtil {
@@ -325,6 +326,22 @@ public class AniUtil {
         }
         Map<String, String> decodeParamMap = HttpUtil.decodeParamMap(url, StandardCharsets.UTF_8);
         return decodeParamMap.get("bangumiId");
+    }
+
+    /**
+     * 当前已订阅番剧的 bgm.tv id 集合
+     * <p>
+     * 各订阅源标记"已订阅"状态的统一口径
+     *
+     * @return bgm id 集合
+     */
+    public static Set<String> getSubscribedBgmIds() {
+        return ANI_LIST.stream()
+                .map(Ani::getBgmUrl)
+                .filter(StrUtil::isNotBlank)
+                .map(BgmUtil::getSubjectId)
+                .filter(StrUtil::isNotBlank)
+                .collect(Collectors.toSet());
     }
 
 

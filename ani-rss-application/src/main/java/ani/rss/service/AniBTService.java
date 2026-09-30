@@ -19,6 +19,8 @@ import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Service
 public class AniBTService {
@@ -27,13 +29,7 @@ public class AniBTService {
     public AniBT list(AniBTQueryDTO dto) {
         String title = dto.getTitle();
 
-        List<String> bgmIdList = AniUtil.ANI_LIST
-                .stream()
-                .map(Ani::getBgmUrl)
-                .filter(StrUtil::isNotBlank)
-                .map(BgmUtil::getSubjectId)
-                .distinct()
-                .toList();
+        Set<String> subscribedBgmIds = AniUtil.getSubscribedBgmIds();
 
         String bgmUrl = dto.getBgmUrl();
         String season = dto.getSeason();
@@ -61,6 +57,14 @@ public class AniBTService {
 
         List<AniBT.ByWeekday> byWeekday = aniBT.getByWeekday();
 
+        // 统一从 bgm.tv 获取全部番剧评分 (唯一口径)
+        List<String> allBgmIds = byWeekday.stream()
+                .map(AniBT.ByWeekday::getAnimes)
+                .flatMap(List::stream)
+                .map(AniBT.Anime::getBgmId)
+                .toList();
+        Map<String, Double> scoreMap = BgmUtil.getScores(allBgmIds);
+
         for (AniBT.ByWeekday weekday : byWeekday) {
             List<AniBT.Anime> animeList = weekday.getAnimes();
             animeList = animeList.stream()
@@ -70,11 +74,12 @@ public class AniBTService {
                         }
                         return true;
                     })
-                    .sorted(Comparator.comparingDouble(AniBT.Anime::getRating).reversed())
                     .peek(anime -> {
-                        boolean exists = bgmIdList.contains(anime.getBgmId());
-                        anime.setExists(exists);
+                        String bgmIdOfAnime = anime.getBgmId();
+                        anime.setScore(scoreMap.getOrDefault(bgmIdOfAnime, 0.0))
+                                .setExists(subscribedBgmIds.contains(bgmIdOfAnime));
                     })
+                    .sorted(Comparator.comparingDouble(AniBT.Anime::getScore).reversed())
                     .toList();
             weekday.setAnimes(animeList);
         }

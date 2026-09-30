@@ -4,7 +4,6 @@ import ani.rss.commons.FileUtils;
 import ani.rss.commons.GroupRegexUtils;
 import ani.rss.commons.GsonStatic;
 import ani.rss.comparator.WeekComparator;
-import ani.rss.entity.Ani;
 import ani.rss.entity.AnimeGarden;
 import ani.rss.entity.BgmInfo;
 import ani.rss.entity.GroupRegex;
@@ -15,7 +14,6 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.StrUtil;
 import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
@@ -41,11 +39,15 @@ public class AnimeGardenService {
             BgmInfo bgmInfo = BgmUtil.getBgmInfo(bgmId);
             String name = BgmUtil.getFinalName(bgmInfo);
             BgmInfo.Images images = bgmInfo.getImages();
+            Double score = Optional.ofNullable(bgmInfo.getRating())
+                    .map(BgmInfo.Rating::getScore)
+                    .orElse(0.0);
 
             AnimeGarden.Subject subject = new AnimeGarden.Subject();
             subject.setName(name)
                     .setId(bgmId)
                     .setCover(images.getSmall())
+                    .setScore(score)
                     .setExists(true);
 
             week.setWeekLabel("搜索")
@@ -53,16 +55,9 @@ public class AnimeGardenService {
             return weekList;
         }
 
-        JsonObject bgmScore = cacheService.getBgmScore();
-        JsonObject bgmCover = cacheService.getBgmCover();
+        Set<String> subscribedBgmIds = AniUtil.getSubscribedBgmIds();
 
-        List<String> bgmIdList = AniUtil.ANI_LIST
-                .stream()
-                .map(Ani::getBgmUrl)
-                .filter(StrUtil::isNotBlank)
-                .map(BgmUtil::getSubjectId)
-                .distinct()
-                .toList();
+        JsonObject bgmCover = cacheService.getBgmCover();
 
         List<AnimeGarden.Subject> subjectList = HttpReq.get(HOST + "/subjects")
                 .thenFunction(res -> {
@@ -72,25 +67,24 @@ public class AnimeGardenService {
                     return GsonStatic.fromJsonList(subjects, AnimeGarden.Subject.class);
                 });
 
+        // 统一从 bgm.tv 获取评分 (唯一口径)
+        Map<String, Double> scoreMap = BgmUtil.getScores(
+                subjectList.stream().map(AnimeGarden.Subject::getId).toList()
+        );
+
         subjectList = subjectList.stream()
                 .peek(subject -> {
                     String id = subject.getId();
-
-                    Double score = Optional.ofNullable(bgmScore.get(id))
-                            .map(JsonElement::getAsDouble)
-                            .orElse(0.0);
 
                     String cover = Optional.ofNullable(bgmCover.get(id))
                             .map(it -> GsonStatic.fromJson(it, BgmInfo.Images.class))
                             .map(BgmInfo.Images::getSmall)
                             .orElse("");
 
-                    boolean exists = bgmIdList.contains(subject.getId());
-
                     subject
-                            .setScore(score)
+                            .setScore(scoreMap.getOrDefault(id, 0.0))
                             .setCover(cover)
-                            .setExists(exists);
+                            .setExists(subscribedBgmIds.contains(id));
                 })
                 .sorted(Comparator.comparingDouble(AnimeGarden.Subject::getScore).reversed())
                 .toList();

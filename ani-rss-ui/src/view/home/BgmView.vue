@@ -23,6 +23,13 @@
             <span>{{ list[it.$index]['nameCn'] ? list[it.$index]['nameCn'] : list[it.$index]['name'] }}</span>
           </template>
         </el-table-column>
+        <el-table-column label="评分" width="90">
+          <template #default="it">
+            <span v-if="list[it.$index]['rating']?.['score'] > 0" class="score-color">
+              {{ list[it.$index]['rating']['score'].toFixed(1) }}
+            </span>
+          </template>
+        </el-table-column>
         <el-table-column label="url" prop="url" width="240"/>
         <el-table-column>
           <template #default="it">
@@ -94,5 +101,10 @@ const emit = defineEmits(['callback'])
 
 .bgm-search-spacer {
   width: 4px;
+}
+
+.score-color {
+  color: #E800A4;
+  font-weight: bold;
 }
 </style>

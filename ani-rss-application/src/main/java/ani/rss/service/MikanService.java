@@ -13,7 +13,6 @@ import cn.hutool.core.util.ReUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.core.util.URLUtil;
 import cn.hutool.http.HttpUtil;
-import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -25,16 +24,14 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 public class MikanService {
-
-    @Resource
-    private CacheService cacheService;
 
     public static String getMikanHost() {
         Config config = ConfigUtil.CONFIG;
@@ -51,55 +48,57 @@ public class MikanService {
      * @return Mikan
      */
     public Mikan list(String text, Mikan.Season season) {
-        AtomicReference<Map<String, MikanBgm>> mikanBgmAtomicReference = new AtomicReference<>(new HashMap<>());
-        AtomicReference<Mikan> mikanAtomicReference = new AtomicReference<>();
-
-        // 并行获取 mikan 番剧列表及其评分
-        CompletableFuture.allOf(
-                CompletableFuture.runAsync(() -> {
-                    Map<String, MikanBgm> mikanBgm = cacheService.getMikanBgm();
-                    mikanBgmAtomicReference.set(mikanBgm);
-                }),
-                CompletableFuture.runAsync(() -> {
-                    Mikan mikan = search(text, season);
-                    mikanAtomicReference.set(mikan);
-                })
-        ).join();
-
-        Map<String, MikanBgm> mikanBgmMap = mikanBgmAtomicReference.get();
-        Mikan mikan = mikanAtomicReference.get();
-
-        List<String> bgmIdList = AniUtil.ANI_LIST
-                .stream()
-                .map(Ani::getBgmUrl)
-                .filter(StrUtil::isNotBlank)
-                .map(BgmUtil::getSubjectId)
-                .distinct()
-                .toList();
+        Mikan mikan = search(text, season);
 
         List<Mikan.Week> weeks = mikan.getWeeks();
+
+        List<MikanInfo> items = weeks.stream()
+                .map(Mikan.Week::getItems)
+                .flatMap(Collection::stream)
+                .toList();
+
+        // 1. 并行解析每部番剧对应的 bgm.tv id (抓取/缓存)
+        try (ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<CompletableFuture<Void>> futures = items.stream()
+                    .map(mikanInfo -> CompletableFuture.runAsync(() -> {
+                        try {
+                            String bgmId = mikanInfo.getBgmId();
+                            if (StrUtil.isBlank(bgmId)) {
+                                String bgmUrl = mikanInfo.getBgmUrl();
+                                if (StrUtil.isNotBlank(bgmUrl)) {
+                                    bgmId = BgmUtil.getSubjectId(bgmUrl);
+                                } else {
+                                    String mikanId = ReUtil.get("\\d+(/)?$", mikanInfo.getUrl(), 0);
+                                    bgmId = BgmUtil.getSubjectIdByMikanId(mikanId);
+                                }
+                            }
+                            mikanInfo.setBgmId(bgmId);
+                        } catch (Exception e) {
+                            log.error(e.getMessage(), e);
+                        }
+                    }, executorService))
+                    .toList();
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        }
+
+        // 2. 统一从 bgm.tv 获取评分 (唯一口径)
+        List<String> bgmIds = items.stream()
+                .map(MikanInfo::getBgmId)
+                .filter(StrUtil::isNotBlank)
+                .toList();
+        Map<String, Double> scoreMap = BgmUtil.getScores(bgmIds);
+
+        Set<String> subscribedBgmIds = AniUtil.getSubscribedBgmIds();
+
+        // 3. 写入评分与订阅状态, 按评分倒序
         for (Mikan.Week week : weeks) {
             List<MikanInfo> mikanInfos = week.getItems();
-            for (MikanInfo mikanInfo : mikanInfos) {
-                String url = mikanInfo.getUrl();
-                String mikanId = ReUtil.get("\\d+(/)?$", url, 0);
-                if (StrUtil.isBlank(mikanId)) {
-                    continue;
-                }
-                if (!mikanBgmMap.containsKey(mikanId)) {
-                    continue;
-                }
-
-                MikanBgm mikanBgm = mikanBgmMap.get(mikanId);
-                Double score = mikanBgm.getScore();
-                String bgmId = mikanBgm.getBgmId();
-                mikanInfo.setScore(score)
-                        .setBgmId(bgmId);
-
-                if (bgmIdList.contains(bgmId)) {
-                    mikanInfo.setExists(true);
-                }
-            }
+            mikanInfos.forEach(mikanInfo -> {
+                String bgmId = StrUtil.blankToDefault(mikanInfo.getBgmId(), "");
+                mikanInfo.setScore(scoreMap.getOrDefault(bgmId, 0.0));
+                mikanInfo.setExists(Boolean.TRUE.equals(mikanInfo.getExists())
+                        || subscribedBgmIds.contains(bgmId));
+            });
             ListUtil.sort(mikanInfos, Comparator.comparingDouble(MikanInfo::getScore).reversed());
         }
 

@@ -1,6 +1,7 @@
 package ani.rss.util.other;
 
 import ani.rss.cache.CacheUtils;
+import ani.rss.cache.PersistCacheUtils;
 import ani.rss.commons.GsonStatic;
 import ani.rss.entity.*;
 import ani.rss.entity.web.ContentType;
@@ -25,10 +26,17 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import lombok.extern.slf4j.Slf4j;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
 import wushuo.tmdb.api.entity.Tmdb;
 
+import java.io.File;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
@@ -892,5 +900,142 @@ public class BgmUtil {
                 .setCustomCompletedPathTemplate(completedPathTemplate);
     }
 
+
+    /**
+     * 从 bgm.tv 获取番剧评分
+     *
+     * @param subjectId bgm 番剧 id
+     * @return 评分, 0.0 表示暂无评分或本次获取失败 (不缓存, 后续重试)
+     */
+    public static Double getScore(String subjectId) {
+        if (StrUtil.isBlank(subjectId)) {
+            return 0.0;
+        }
+
+        String key = "BGM_score:" + subjectId;
+
+        Double cacheScore = CacheUtils.get(key);
+        if (Objects.nonNull(cacheScore)) {
+            return cacheScore;
+        }
+
+        String bgmApi = CONFIG.getBgmApi();
+        Double score = setToken(HttpReq.get(bgmApi + "/v0/subjects/" + subjectId))
+                .thenFunction(res -> {
+                    if (!res.isOk()) {
+                        return 0.0;
+                    }
+                    String body = res.body();
+                    if (!JSONUtil.isTypeJSON(body)) {
+                        return 0.0;
+                    }
+                    BgmInfo bgmInfo = GsonStatic.fromJson(body, BgmInfo.class);
+                    return Opt.ofNullable(bgmInfo.getRating())
+                            .map(BgmInfo.Rating::getScore)
+                            .orElse(0.0);
+                });
+
+        score = ObjectUtil.defaultIfNull(score, 0.0);
+
+        if (score > 0) {
+            // 评分变化缓慢, 缓存 6 小时
+            CacheUtils.put(key, score, TimeUnit.HOURS.toMillis(6));
+        }
+        return score;
+    }
+
+    /**
+     * 批量并行获取 bgm.tv 评分
+     * <p>
+     * 各订阅源评分的唯一入口, 保证口径一致; 内部使用虚拟线程并发, 自动去重
+     *
+     * @param subjectIds bgm 番剧 id 集合
+     * @return k: bgm id, v: 评分 (未找到或获取失败为 0.0)
+     */
+    public static Map<String, Double> getScores(Collection<String> subjectIds) {
+        Map<String, Double> scoreMap = new ConcurrentHashMap<>();
+
+        List<String> ids = subjectIds.stream()
+                .filter(StrUtil::isNotBlank)
+                .distinct()
+                .toList();
+
+        if (ids.isEmpty()) {
+            return scoreMap;
+        }
+
+        try (ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<CompletableFuture<Void>> futures = ids.stream()
+                    .map(id -> CompletableFuture.runAsync(
+                            () -> scoreMap.put(id, getScore(id)), executorService))
+                    .toList();
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        }
+        return scoreMap;
+    }
+
+    private volatile static PersistCacheUtils mikanBgmCache;
+
+    private synchronized static PersistCacheUtils getMikanBgmCache() {
+        if (Objects.isNull(mikanBgmCache)) {
+            File configDir = ConfigUtil.getConfigDir();
+            File cacheFile = new File(configDir, "cache/mikan-bgm.json");
+            mikanBgmCache = PersistCacheUtils.getInstance(cacheFile);
+        }
+        return mikanBgmCache;
+    }
+
+    /**
+     * 通过 Mikan 番剧 id 获取对应的 bgm.tv 番剧 id
+     * <p>
+     * 抓取 Mikan 番剧详情页中的 Bangumi 链接, 映射关系长期持久化缓存
+     *
+     * @param mikanId mikan 番剧 id
+     * @return bgm 番剧 id, 空字符串表示未找到或获取失败
+     */
+    public static String getSubjectIdByMikanId(String mikanId) {
+        if (StrUtil.isBlank(mikanId)) {
+            return "";
+        }
+
+        String cacheKey = "bgmId:" + mikanId;
+
+        String bgmId = getMikanBgmCache().get(cacheKey);
+        if (StrUtil.isNotBlank(bgmId)) {
+            return bgmId;
+        }
+
+        String url = MikanService.getMikanHost() + "/Home/Bangumi/" + mikanId;
+
+        try {
+            bgmId = HttpReq.get(url)
+                    .timeout(1000 * 10)
+                    .thenFunction(res -> {
+                        if (!res.isOk()) {
+                            return "";
+                        }
+                        Document document = Jsoup.parse(res.body());
+                        for (Element bangumiInfo : document.select(".bangumi-info")) {
+                            if (!"Bangumi番组计划链接：".equals(bangumiInfo.ownText())) {
+                                continue;
+                            }
+                            String bgmUrl = bangumiInfo.selectFirst("a").attr("href");
+                            if (StrUtil.isBlank(bgmUrl)) {
+                                return "";
+                            }
+                            return getSubjectId(bgmUrl);
+                        }
+                        return "";
+                    });
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+            return "";
+        }
+
+        if (StrUtil.isNotBlank(bgmId)) {
+            getMikanBgmCache().put(cacheKey, bgmId);
+        }
+        return bgmId;
+    }
 
 }

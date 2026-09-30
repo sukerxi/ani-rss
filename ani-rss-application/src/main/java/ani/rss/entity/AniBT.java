@@ -44,7 +44,7 @@ public class AniBT implements Serializable {
         @Schema(description = "封面图片")
         private String cover;
         @Schema(description = "评分")
-        private Double rating;
+        private Double score;
         @Schema(description = "标题")
         private Title title;
         @Schema(description = "格式")
