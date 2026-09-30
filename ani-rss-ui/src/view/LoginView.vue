@@ -2,15 +2,16 @@
   <div
       class="flex-center content">
     <div id="login-page" class="flex-center">
-      <div id="form">
-        <div style="text-align: center;">
-          <img src="/public/icon.svg" height="80" width="80" alt="icon.svg"/>
+      <div id="form" class="login-card">
+        <div class="login-brand">
+          <img src="/icon.svg" height="64" width="64" alt="ANI-RSS"/>
         </div>
         <h2 class="title-h2">ANI-RSS</h2>
         <el-form @submit.prevent
                  @keyup.enter="login">
           <el-form-item>
             <el-input v-model.trim="user.username"
+                      size="large"
                       placeholder="用户名" autocomplete="username">
               <template #prefix>
                 <el-icon class="el-input__icon">
@@ -21,6 +22,7 @@
           </el-form-item>
           <el-form-item>
             <el-input v-model.trim="user.password" show-password
+                      size="large"
                       placeholder="密码" autocomplete="current-password">
               <template #prefix>
                 <el-icon class="el-input__icon">
@@ -29,10 +31,16 @@
               </template>
             </el-input>
           </el-form-item>
-          <div class="flex-center action">
+          <div class="login-options">
             <el-checkbox v-model:model-value="rememberThePassword.remember">记住密码</el-checkbox>
-            <el-button @click="login" :loading="loading" icon="Right">登录</el-button>
           </div>
+          <el-button type="primary"
+                     size="large"
+                     class="login-submit"
+                     @click="login"
+                     :loading="loading">
+            登录
+          </el-button>
         </el-form>
       </div>
     </div>
@@ -133,36 +141,57 @@ onMounted(() => {
   justify-content: space-between;
 }
 
-#form {
-  max-width: 200px;
+#login-page {
+  flex: 1;
+  width: 100%;
+  padding: 16px;
+}
+
+.login-card {
+  width: min(320px, 100%);
+  padding: 32px 28px 28px;
+  border: 1px solid var(--el-border-color-extra-light);
+  border-radius: 16px;
+  background-color: var(--el-bg-color);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  box-sizing: border-box;
+}
+
+.login-brand {
+  text-align: center;
+  line-height: 0;
+}
+
+.login-brand img {
+  border-radius: 14px;
 }
 
 .title-h2 {
   text-align: center;
-  margin-bottom: 32px;
+  margin: 14px 0 22px;
+  letter-spacing: 0.02em;
 }
 
-el-input {
-  width: 200px;
+.login-card :deep(.el-form-item) {
+  margin-bottom: 16px;
 }
 
-.action {
+.login-card :deep(.el-input) {
   width: 100%;
+}
+
+.login-options {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.login-submit {
+  width: 100%;
 }
 
 .footer {
   margin-bottom: 16px;
-}
-
-@media (max-width: 450px) {
-  #form {
-    width: 80%;
-  }
-}
-
-#login-page {
-  flex: 1;
-  width: 100%;
 }
 </style>

@@ -39,7 +39,12 @@
                 <div class="metric-value">{{ enabledTotal }}</div>
               </div>
             </div>
-            <div class="metric-item">
+            <div class="metric-item is-link"
+                 role="button"
+                 tabindex="0"
+                 aria-label="查看下载中任务"
+                 @click="goDownloads"
+                 @keyup.enter="goDownloads">
               <div class="metric-icon downloading">
                 <el-icon>
                   <Download/>
@@ -50,7 +55,12 @@
                 <div class="metric-value">{{ downloadingList.length }}</div>
               </div>
             </div>
-            <div class="metric-item">
+            <div class="metric-item is-link"
+                 role="button"
+                 tabindex="0"
+                 aria-label="查看做种中任务"
+                 @click="goDownloads"
+                 @keyup.enter="goDownloads">
               <div class="metric-icon seeding">
                 <el-icon>
                   <Upload/>
@@ -123,7 +133,7 @@
               <el-table-column label="大小" width="110" prop="formatSize"/>
               <el-table-column label="状态" width="100">
                 <template #default="{ row }">
-                  {{ stateLabel(row.state) }}
+                  {{ torrentStateLabel(row.state) }}
                 </template>
               </el-table-column>
             </el-table>
@@ -162,8 +172,9 @@
 
 <script setup>
 import {computed, onActivated, onDeactivated, onUnmounted, ref} from "vue";
+import {useRouter} from "vue-router";
 import {ArrowLeft, ArrowRight, CircleCheck, Download, List, Upload} from "@element-plus/icons-vue";
-import {formatDate, fromNow} from "@/js/format.js";
+import {formatDate, fromNow, torrentStateLabel} from "@/js/format.js";
 import * as http from "@/js/http.js";
 import AniCoverView from "@/view/home/AniCoverView.vue";
 import EditAniView from "@/view/home/EditAniView.vue";
@@ -232,27 +243,13 @@ const getCompareTime = item => {
   return Number.isNaN(releaseTime) ? 0 : releaseTime
 }
 
+const router = useRouter()
+
 const isDownloading = item => downloadingStates.includes(item.state)
 const isSeeding = item => seedingStates.includes(item.state)
 
-const stateLabel = state => {
-  const map = {
-    forcedDL: '强制下载',
-    downloading: '下载中',
-    forcedMetaDL: '获取元数据',
-    metaDL: '元数据',
-    stalledDL: '下载停滞',
-    queuedDL: '等待下载',
-    checkingDL: '检查下载',
-    allocating: '分配空间',
-    moving: '移动中',
-    forcedUP: '强制上传',
-    uploading: '上传中',
-    stalledUP: '做种中',
-    queuedUP: '等待做种',
-    checkingUP: '检查做种'
-  }
-  return map[state] || state || '未知'
+const goDownloads = () => {
+  router.push('/downloads')
 }
 
 const scrollToday = direction => {
@@ -331,6 +328,20 @@ onUnmounted(stopPolling)
   padding: 12px;
   border-radius: 8px;
   background-color: var(--el-bg-color);
+}
+
+.metric-item.is-link {
+  cursor: pointer;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.metric-item.is-link:hover {
+  background-color: var(--el-fill-color-light);
+}
+
+.metric-item.is-link:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: -2px;
 }
 
 .metric-icon {

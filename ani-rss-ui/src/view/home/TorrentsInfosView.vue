@@ -62,7 +62,9 @@
                    :key="torrentsInfo.hash || torrentsInfo.id || torrentsInfo.name"
                    shadow="never"
                    class="torrents-card">
-            <p>{{ torrentsInfo.name }}</p>
+            <el-tooltip :content="torrentsInfo.name" placement="top" :show-after="300">
+              <p class="torrents-name">{{ torrentsInfo.name }}</p>
+            </el-tooltip>
             <el-progress :percentage="torrentsInfo['progress']"/>
             <div class="torrents-size-info">
             <span>
@@ -70,17 +72,24 @@
               /
               <span class="torrents-size-value">{{ formatTorrentSize(torrentsInfo['size']) }}</span>
             </span>
+              <span class="torrents-percent">{{ formatPercent(torrentsInfo['progress']) }}</span>
             </div>
             <template #footer>
               <div class="flex torrents-footer">
-                <div>
-                  <el-tag v-for="tag in torrentsInfo['tagList']" class="torrents-tag-spacer" type="info">
+                <div class="torrents-tags">
+                  <el-tag v-for="tag in torrentsInfo['tagList']"
+                          :key="tag"
+                          class="torrents-tag-spacer"
+                          size="small"
+                          type="info">
                     {{ tag }}
                   </el-tag>
                 </div>
                 <div>
-                  <el-tag class="torrents-tag-spacer" type="primary">
-                    {{ torrentsInfo['state'] }}
+                  <el-tag class="torrents-tag-spacer"
+                          size="small"
+                          :type="torrentStateType(torrentsInfo['state'])">
+                    {{ torrentStateLabel(torrentsInfo['state']) }}
                   </el-tag>
                 </div>
               </div>
@@ -96,7 +105,7 @@
 import {computed, onActivated, onDeactivated, onUnmounted, ref} from "vue";
 import * as http from "@/js/http.js";
 import {ArrowDown, Check, Sort, SortDown, SortUp} from "@element-plus/icons-vue";
-import {formatSize} from "@/js/format.js";
+import {formatPercent, formatSize, torrentStateLabel, torrentStateType} from "@/js/format.js";
 import PageHeaderView from "@/view/custom/PageHeaderView.vue";
 
 const activeTab = ref('downloading')
@@ -288,17 +297,40 @@ onUnmounted(pausePolling)
 }
 
 .torrents-card {
-  margin-bottom: 4px;
+  margin-bottom: 8px;
+}
+
+.torrents-name {
+  margin-bottom: 8px;
+  font-weight: 500;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
 }
 
 .torrents-size-info {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
   gap: 4px 16px;
   margin-top: 6px;
   font-size: 13px;
   line-height: 20px;
   font-variant-numeric: tabular-nums;
+}
+
+.torrents-percent {
+  color: var(--el-text-color-regular);
+  font-weight: 600;
+}
+
+.torrents-tags {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
 }
 
 .torrents-size-label {

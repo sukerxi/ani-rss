@@ -59,7 +59,7 @@
                      @click="confirmRefreshAni">
             刷新
           </el-button>
-          <el-button aria-label="管理" @click="manageRef?.show" class="auto-button" icon="Fold">
+          <el-button aria-label="管理" @click="manageRef?.show" class="auto-button" icon="Operation">
             管理
           </el-button>
         </div>

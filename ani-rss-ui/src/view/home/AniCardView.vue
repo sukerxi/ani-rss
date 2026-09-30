@@ -67,29 +67,37 @@
           </el-text>
         </div>
         <div class="list-card-actions">
-          <el-button text @click="emit('playlist', item)" bg v-if="showPlaylist">
-            <el-icon>
-              <Files/>
-            </el-icon>
-          </el-button>
+          <el-tooltip v-if="showPlaylist" content="播放列表" placement="top">
+            <el-button text bg aria-label="播放列表" @click="emit('playlist', item)">
+              <el-icon>
+                <Files/>
+              </el-icon>
+            </el-button>
+          </el-tooltip>
           <div class="list-card-spacer" v-if="showPlaylist"></div>
-          <el-button bg text title="更换封面" @click="emit('cover', item)">
-            <el-icon>
-              <Picture/>
-            </el-icon>
-          </el-button>
+          <el-tooltip content="更换封面" placement="top">
+            <el-button bg text aria-label="更换封面" @click="emit('cover', item)">
+              <el-icon>
+                <Picture/>
+              </el-icon>
+            </el-button>
+          </el-tooltip>
           <div class="list-card-spacer"></div>
-          <el-button bg text @click="emit('edit', item)">
-            <el-icon>
-              <EditIcon/>
-            </el-icon>
-          </el-button>
+          <el-tooltip content="编辑" placement="top">
+            <el-button bg text aria-label="编辑" @click="emit('edit', item)">
+              <el-icon>
+                <EditIcon/>
+              </el-icon>
+            </el-button>
+          </el-tooltip>
           <div class="list-card-spacer"></div>
-          <el-button type="danger" text @click="emit('del', [item])" bg>
-            <el-icon>
-              <Delete/>
-            </el-icon>
-          </el-button>
+          <el-tooltip content="删除" placement="top">
+            <el-button type="danger" text bg aria-label="删除" @click="emit('del', [item])">
+              <el-icon>
+                <Delete/>
+              </el-icon>
+            </el-button>
+          </el-tooltip>
         </div>
       </div>
     </div>
@@ -131,11 +139,13 @@ const handleCoverClick = () => {
 .list-card-content {
   display: flex;
   width: 100%;
+  min-width: 0;
   align-items: center;
 }
 
 .list-card-image-container {
   height: 100%;
+  flex-shrink: 0;
 }
 
 .list-card-image {
@@ -147,16 +157,23 @@ const handleCoverClick = () => {
 }
 
 .list-card-info {
-  flex-grow: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   position: relative;
 }
 
 .list-card-info-inner {
-  margin-left: 8px;
+  margin-left: 10px;
+  padding-right: 34px;
+  min-width: 0;
+}
+
+.list-card-info-inner .flex {
+  min-width: 0;
 }
 
 .list-card-title {
-  width: 200px;
+  width: 100%;
   line-height: 1.6;
   letter-spacing: 0.0125em;
   font-weight: 500;
@@ -175,18 +192,18 @@ const handleCoverClick = () => {
 }
 
 .list-card-url {
-  max-width: 300px;
+  width: 100%;
 }
 
 .list-card-tags {
-  width: 180px;
+  width: 100%;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-gap: 4px;
 }
 
 .list-card-subgroup {
-  max-width: 60px;
+  width: 100%;
   color: var(--el-color-info);
 }
 

@@ -111,7 +111,9 @@ onMounted(() => {
 }
 
 .app-menu :deep(.el-menu-item.is-active) {
-  background-color: var(--el-menu-hover-bg-color);
+  color: var(--el-color-primary);
+  background-color: var(--el-color-primary-light-9);
+  font-weight: 600;
 }
 
 .app-main {

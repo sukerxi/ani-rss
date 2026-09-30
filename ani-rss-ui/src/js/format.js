@@ -64,3 +64,63 @@ export let formatTime = ts => {
 export let formatDate = ts => {
     return dayjs(new Date(ts)).format('YYYY-MM-DD')
 };
+
+/**
+ * 下载器任务状态中文映射
+ */
+const TORRENT_STATE_LABELS = {
+    unknown: '未知',
+    forcedDL: '强制下载',
+    downloading: '下载中',
+    forcedMetaDL: '强制获取元数据',
+    metaDL: '获取元数据',
+    stalledDL: '下载停滞',
+    forcedUP: '强制上传',
+    uploading: '上传中',
+    stalledUP: '做种中',
+    checkingResumeData: '检查恢复数据',
+    queuedDL: '等待下载',
+    queuedUP: '等待做种',
+    checkingUP: '检查做种',
+    checkingDL: '检查下载',
+    stoppedDL: '已暂停',
+    pausedDL: '已暂停',
+    stoppedUP: '已完成',
+    pausedUP: '已完成',
+    moving: '移动中',
+    missingFiles: '文件缺失',
+    error: '错误',
+    allocating: '分配空间'
+}
+
+export let torrentStateLabel = state => TORRENT_STATE_LABELS[state] || state || '未知'
+
+/**
+ * 根据任务状态返回 el-tag 类型：下载中/做种中/暂停/异常
+ */
+export let torrentStateType = state => {
+    if (['forcedDL', 'downloading'].includes(state)) {
+        return 'primary'
+    }
+    if (['forcedUP', 'uploading'].includes(state)) {
+        return 'success'
+    }
+    if (['error', 'missingFiles'].includes(state)) {
+        return 'danger'
+    }
+    if (['stoppedDL', 'pausedDL', 'stoppedUP', 'pausedUP', 'unknown'].includes(state)) {
+        return 'info'
+    }
+    return 'warning'
+}
+
+/**
+ * 进度百分比（入参为 0-100）
+ */
+export let formatPercent = value => {
+    const percent = Number(value)
+    if (!Number.isFinite(percent) || percent <= 0) {
+        return '0%'
+    }
+    return `${percent >= 100 ? 100 : percent.toFixed(1)}%`
+}
