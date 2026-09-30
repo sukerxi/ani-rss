@@ -9,7 +9,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
       packages: write
     steps:
       - uses: actions/checkout@v6
@@ -24,17 +23,6 @@ jobs:
           bash ./package.sh
           version=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout -f pom.xml)
           echo "version=v$version" >> $GITHUB_ENV
-      - name: Release
-        uses: softprops/action-gh-release@v3
-        with:
-          name: ${{ env.version }}
-          body_path: UPDATE.md
-          tag_name: ${{ env.version }}
-          append_body: false
-          token: ${{ secrets.GITHUB_TOKEN }}
-          files: |
-            ./ani-rss-application/target/ani-rss.jar
-            ./ani-rss-application/target/ani-rss.exe
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
       - name: Set up Docker Buildx
