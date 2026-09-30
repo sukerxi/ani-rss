@@ -370,6 +370,13 @@ export let previewCollection = (info) => api.post('api/previewCollection', info)
 export let getCollectionSubgroup = (info) => api.post('api/getCollectionSubgroup', info)
 
 /**
+ * 取消合集预览（清理磁力占位任务）
+ * @param info 合集
+ * @returns {Promise<unknown>}
+ */
+export let cancelCollection = (info) => api.post('api/cancelCollection', info)
+
+/**
  * 将指定id的BGM番剧转换为订阅
  * @param id BGM的ID
  * @returns {Promise<unknown>}

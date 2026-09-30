@@ -3,7 +3,8 @@
   <CollectionPreviewView ref="collectionPreviewRef" v-model:data="data"/>
   <el-dialog v-model="dialogVisible"
              center
-             title="添加合集">
+             title="添加合集"
+             @close="onDialogClose">
     <div v-loading="loading" style="height: 500px;">
       <el-scrollbar style="padding: 0 12px;">
         <div>
@@ -134,19 +135,33 @@
                 <CustomTagsView :config="data.ani"/>
               </el-form-item>
               <el-form-item label="Torrent">
-                <el-tag v-if="data.filename" closable @close="clearTorrent">
-                  <el-tooltip :content="data.filename">
-                    <el-text line-clamp="1" size="small" class="filename">
-                      {{ data.filename }}
-                    </el-text>
-                  </el-tooltip>
-                </el-tag>
-                <UploadView v-else
-                            url="api/uploadAndReadToBase64"
-                            :extensions="['torrent']"
-                            :callback="uploadCallback">
-                  <el-button bg icon="Upload">选择并上传种子</el-button>
-                </UploadView>
+                <div class="torrent-source">
+                  <el-radio-group v-model="torrentSource" size="small" @change="clearTorrentSource">
+                    <el-radio-button value="file">种子文件</el-radio-button>
+                    <el-radio-button value="magnet">磁力链接</el-radio-button>
+                  </el-radio-group>
+                  <div v-if="torrentSource === 'file'" class="torrent-input">
+                    <el-tag v-if="data.filename" closable @close="clearTorrent">
+                      <el-tooltip :content="data.filename">
+                        <el-text line-clamp="1" size="small" class="filename">
+                          {{ data.filename }}
+                        </el-text>
+                      </el-tooltip>
+                    </el-tag>
+                    <UploadView v-else
+                                url="api/uploadAndReadToBase64"
+                                :extensions="['torrent']"
+                                :callback="uploadCallback">
+                      <el-button bg icon="Upload">选择并上传种子</el-button>
+                    </UploadView>
+                  </div>
+                  <el-input v-else
+                            v-model="data.torrent"
+                            class="torrent-input"
+                            :autosize="{ minRows: 2, maxRows: 4 }"
+                            placeholder="magnet:?xt=urn:btih:..."
+                            type="textarea"/>
+                </div>
               </el-form-item>
             </template>
           </el-form>
@@ -154,13 +169,13 @@
       </el-scrollbar>
     </div>
     <div class="action">
-      <el-button :disabled="!data.filename" bg
+      <el-button :disabled="!data.torrent" bg
                  icon="Grid"
                  text
                  @click="collectionPreviewRef?.show">
         预览
       </el-button>
-      <el-button :disabled="!data.filename"
+      <el-button :disabled="!data.torrent"
                  :loading="startLoading"
                  bg
                  icon="Check"
@@ -228,14 +243,33 @@ let bgmRef = ref()
 let rssButtonLoading = ref(false)
 let loading = ref(false)
 
-// 清空已经上传的种子文件及其 Base64 内容。
+let torrentSource = ref('file')
+
+// 通知后端清理磁力预览在 qBittorrent 中创建的停止占位任务
+let cancelMagnetPreview = () => {
+  if (data.value.torrent && data.value.torrent.startsWith('magnet:?')) {
+    http.cancelCollection(data.value).catch(() => {})
+  }
+}
+
+// 清空已经上传的种子文件或磁力链接及其内容
 let clearTorrent = () => {
+  cancelMagnetPreview()
   data.value.filename = ''
   data.value.torrent = ''
 }
 
+let clearTorrentSource = () => {
+  clearTorrent()
+}
+
+let onDialogClose = () => {
+  cancelMagnetPreview()
+}
+
 let bgmAdd = (bgm) => {
   loading.value = true
+  cancelMagnetPreview()
   data.value.show = false
   data.value.torrent = ''
   data.value.filename = ''
@@ -280,6 +314,7 @@ let show = () => {
   data.value.ani.title = ''
   data.value.torrent = ''
   data.value.filename = ''
+  torrentSource.value = 'file'
   dialogVisible.value = true
 }
 
@@ -332,6 +367,14 @@ defineExpose({show})
   width: 100%;
   display: flex;
   justify-content: end;
+}
+
+.torrent-source {
+  width: 100%;
+}
+
+.torrent-input {
+  margin-top: 8px;
 }
 
 .filename {

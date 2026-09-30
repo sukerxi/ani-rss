@@ -13,7 +13,9 @@ import ani.rss.enums.TorrentsTagEnum;
 import ani.rss.service.ClearService;
 import ani.rss.service.DownloadService;
 import ani.rss.util.basic.HttpReq;
+import cn.hutool.core.codec.Base32;
 import cn.hutool.core.io.FileUtil;
+import cn.hutool.core.lang.Assert;
 import cn.hutool.core.text.StrFormatter;
 import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.core.util.ClassUtil;
@@ -24,7 +26,11 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 管理下载器的调用与种子存取
@@ -33,6 +39,12 @@ import java.util.List;
 public class TorrentUtil {
     private static final Config CONFIG = ConfigUtil.CONFIG;
     private static BaseDownload DOWNLOAD;
+
+    /**
+     * 磁力链接中的 v1 info hash（btih），支持 40 位十六进制与 32 位 Base32
+     */
+    private static final Pattern MAGNET_BTIH_PATTERN =
+            Pattern.compile("xt=urn:btih:([A-Za-z0-9]+)", Pattern.CASE_INSENSITIVE);
 
     /**
      * 获取任务列表
@@ -361,6 +373,40 @@ public class TorrentUtil {
             log.error(e.getMessage(), e);
         }
         return StrFormatter.format("magnet:?xt=urn:btih:{}", hexHash);
+    }
+
+    /**
+     * 判断种子内容是否为磁力链接
+     *
+     * @param value 种子内容（Base64 种子或磁力链接）
+     * @return 磁力链接返回 true
+     */
+    public static boolean isMagnet(String value) {
+        return StrUtil.startWithIgnoreCase(value, "magnet:?");
+    }
+
+    /**
+     * 从磁力链接中解析 qBittorrent API 使用的 v1 info hash（小写十六进制）。
+     * 支持 40 位十六进制与 32 位 Base32 两种 btih 编码，不支持纯 v2（btmh）磁力。
+     *
+     * @param magnet 磁力链接
+     * @return 40 位小写十六进制 info hash
+     */
+    public static String parseMagnetHash(String magnet) {
+        Assert.notBlank(magnet, "磁力链接不能为空");
+        Matcher matcher = MAGNET_BTIH_PATTERN.matcher(magnet);
+        Assert.isTrue(matcher.find(), "磁力链接格式错误，缺少 xt=urn:btih 参数");
+
+        String hash = matcher.group(1).toUpperCase(Locale.ROOT);
+        if (hash.length() == 40 && ReUtil.isMatch("^[A-F0-9]{40}$", hash)) {
+            return hash.toLowerCase(Locale.ROOT);
+        }
+        if (hash.length() == 32 && ReUtil.isMatch("^[A-Z2-7]{32}$", hash)) {
+            String hex = HexFormat.of().formatHex(Base32.decode(hash));
+            Assert.isTrue(hex.length() == 40, "磁力链接 Base32 info hash 解析失败");
+            return hex;
+        }
+        throw new IllegalArgumentException("磁力链接 info hash 无法识别，仅支持 v1（btih）磁力链接");
     }
 
     /**

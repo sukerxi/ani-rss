@@ -47,4 +47,12 @@ public class CollectionController extends BaseController {
         result.setData(subgroup);
         return result;
     }
+
+    @Auth
+    @Operation(summary = "取消合集预览（清理磁力占位任务）")
+    @PostMapping("/cancelCollection")
+    public Result<Void> cancelCollection(@RequestBody CollectionInfo collectionInfo) {
+        collectionService.cancelCollection(collectionInfo);
+        return Result.success();
+    }
 }
