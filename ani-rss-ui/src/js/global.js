@@ -95,13 +95,8 @@ const initTheme = () => {
  * 布局初始化
  */
 const initLayout = () => {
-    let app = document.querySelector('#app');
-
-    // 设置最大布局宽度
+    // 设置最大内容宽度（仅约束主内容区，侧边栏始终贴视口左缘）
     maxContentWidth.value = Math.max(maxContentWidth.value, 1200)
-
-    app
-        .style.maxWidth = `${maxContentWidth.value}px`
 
     const el = document.documentElement
     el.style.setProperty('--max-content-width', `${maxContentWidth.value}px`)

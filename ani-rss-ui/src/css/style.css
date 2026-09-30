@@ -16,6 +16,9 @@ html.dark {
 :root {
     --body-background-color: #f7f5fa;
 
+    /* 侧边栏宽度（桌面端） */
+    --app-nav-width: 132px;
+
     /* 全局圆角优化：更圆润 */
     --el-border-radius-small: 8px;
     --el-border-radius-base: 12px;
@@ -147,10 +150,6 @@ body {
 html, body, #app {
     width: 100%;
     height: 100%;
-}
-
-#app {
-    margin: 0 auto;
 }
 
 .app-page-layout {

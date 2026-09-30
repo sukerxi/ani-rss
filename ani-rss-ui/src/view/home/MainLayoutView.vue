@@ -73,11 +73,12 @@ onMounted(() => {
 }
 
 .app-nav {
-  width: 132px;
+  width: var(--app-nav-width);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   background: var(--el-bg-color);
+  border-right: 1px solid var(--el-border-color-light);
 }
 
 .app-brand {
@@ -121,6 +122,9 @@ onMounted(() => {
   min-width: 0;
   height: 100%;
   overflow: hidden;
+  /* 仅主内容区受最大内容宽度约束并居中，侧边栏保持贴左缘 */
+  max-width: calc(var(--max-content-width, 1600px) - var(--app-nav-width));
+  margin-inline: auto;
 }
 
 @media (max-width: 800px) {
@@ -137,6 +141,7 @@ onMounted(() => {
     width: 100%;
     padding-bottom: env(safe-area-inset-bottom, 0px);
     border-top: 1px solid var(--el-border-color-light);
+    border-right: none;
   }
 
   .app-brand {
@@ -176,6 +181,8 @@ onMounted(() => {
 
   .app-main {
     height: 100%;
+    max-width: none;
+    margin-inline: 0;
   }
 }
 </style>
