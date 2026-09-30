@@ -37,7 +37,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -902,52 +904,146 @@ public class BgmUtil {
 
 
     /**
+     * 评分内存缓存前缀, 正分 fresh 12 小时, 0 分/失败 fresh 5 分钟 (避免重试风暴)
+     */
+    private static final String SCORE_KEY_PREFIX = "BGM_score:";
+    private static final long SCORE_FRESH_MS = TimeUnit.HOURS.toMillis(12);
+    private static final long SCORE_EMPTY_FRESH_MS = TimeUnit.MINUTES.toMillis(5);
+    /**
+     * 评分持久缓存有效期, 过期后重新请求 bgm.tv 校准
+     */
+    private static final long SCORE_PERSIST_TTL_MS = TimeUnit.HOURS.toMillis(24);
+
+    /**
+     * 同一 bgm id 的并发评分请求合并 (single-flight)
+     */
+    private static final Map<String, CompletableFuture<Double>> SCORE_LOADING = new ConcurrentHashMap<>();
+
+    /**
+     * 评分请求最大并发, 避免整季无界请求打爆 bgm.tv
+     */
+    private static final Semaphore SCORE_PERMITS = new Semaphore(16);
+
+    /**
+     * bgm.tv 全局请求最小间隔, 约 12 req/s
+     */
+    private static final long SCORE_MIN_INTERVAL_MS = 80;
+    private static final AtomicLong LAST_SCORE_REQUEST = new AtomicLong(0);
+
+    /**
      * 从 bgm.tv 获取番剧评分
+     * <p>
+     * 内存缓存 (正分 12h / 0 分 5min) + 持久化缓存 (正分, 跨重启复用);
+     * 未命中时经过全局限流与并发控制请求源站, 同一 id 的并发请求只发出一次
      *
      * @param subjectId bgm 番剧 id
-     * @return 评分, 0.0 表示暂无评分或本次获取失败 (不缓存, 后续重试)
+     * @return 评分, 0.0 表示暂无评分或本次获取失败
      */
     public static Double getScore(String subjectId) {
         if (StrUtil.isBlank(subjectId)) {
             return 0.0;
         }
 
-        String key = "BGM_score:" + subjectId;
+        String key = SCORE_KEY_PREFIX + subjectId;
 
         Double cacheScore = CacheUtils.get(key);
         if (Objects.nonNull(cacheScore)) {
             return cacheScore;
         }
 
-        String bgmApi = CONFIG.getBgmApi();
-        Double score = setToken(HttpReq.get(bgmApi + "/v0/subjects/" + subjectId))
-                .thenFunction(res -> {
-                    if (!res.isOk()) {
-                        return 0.0;
-                    }
-                    String body = res.body();
-                    if (!JSONUtil.isTypeJSON(body)) {
-                        return 0.0;
-                    }
-                    BgmInfo bgmInfo = GsonStatic.fromJson(body, BgmInfo.class);
-                    return Opt.ofNullable(bgmInfo.getRating())
-                            .map(BgmInfo.Rating::getScore)
-                            .orElse(0.0);
-                });
-
-        score = ObjectUtil.defaultIfNull(score, 0.0);
-
-        if (score > 0) {
-            // 评分变化缓慢, 缓存 6 小时
-            CacheUtils.put(key, score, TimeUnit.HOURS.toMillis(6));
+        // 持久化正分缓存, 重启后仍可立即渲染
+        Object persisted = getBgmScoreCache().get("score:" + subjectId);
+        Double persistedScore = Objects.isNull(persisted) ? null : Convert.toDouble(persisted);
+        if (Objects.nonNull(persistedScore) && persistedScore > 0) {
+            CacheUtils.put(key, persistedScore, SCORE_FRESH_MS);
+            return persistedScore;
         }
-        return score;
+
+        return requestScore(subjectId, key);
+    }
+
+    /**
+     * 单次评分请求, 合并同 id 并发并写回缓存
+     */
+    private static Double requestScore(String subjectId, String cacheKey) {
+        CompletableFuture<Double> future = SCORE_LOADING.computeIfAbsent(subjectId,
+                id -> CompletableFuture.supplyAsync(() -> doRequestScore(id), SCORE_EXECUTOR));
+        try {
+            Double score = ObjectUtil.defaultIfNull(future.join(), 0.0);
+            if (score > 0) {
+                CacheUtils.put(cacheKey, score, SCORE_FRESH_MS);
+            } else {
+                // 0 分/失败短缓存, 避免失败时反复请求
+                CacheUtils.put(cacheKey, 0.0, SCORE_EMPTY_FRESH_MS);
+            }
+            return score;
+        } finally {
+            SCORE_LOADING.remove(subjectId, future);
+        }
+    }
+
+    private static final ExecutorService SCORE_EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
+
+    /**
+     * 真正请求 bgm.tv 评分, 受全局并发与速率限制, 替代每个请求前的固定 sleep
+     */
+    private static Double doRequestScore(String subjectId) {
+        SCORE_PERMITS.acquireUninterruptibly();
+        try {
+            awaitScoreRateLimit();
+
+            String bgmApi = CONFIG.getBgmApi();
+            HttpRequest request = HttpReq.get(bgmApi + "/v0/subjects/" + subjectId);
+            String bgmToken = CONFIG.getBgmToken();
+            if (StrUtil.isNotBlank(bgmToken)) {
+                request.header(Header.AUTHORIZATION, "Bearer " + bgmToken);
+            }
+
+            return request.thenFunction(res -> {
+                if (!res.isOk()) {
+                    return 0.0;
+                }
+                String body = res.body();
+                if (!JSONUtil.isTypeJSON(body)) {
+                    return 0.0;
+                }
+                BgmInfo bgmInfo = GsonStatic.fromJson(body, BgmInfo.class);
+                return Opt.ofNullable(bgmInfo.getRating())
+                        .map(BgmInfo.Rating::getScore)
+                        .orElse(0.0);
+            });
+        } catch (Exception e) {
+            log.warn("获取 bgm 评分失败 id={}, {}", subjectId, e.getMessage());
+            return 0.0;
+        } finally {
+            SCORE_PERMITS.release();
+        }
+    }
+
+    /**
+     * 全局评分请求节流, 保证对 bgm.tv 的请求间隔不短于 {@link #SCORE_MIN_INTERVAL_MS}
+     */
+    private static void awaitScoreRateLimit() {
+        while (true) {
+            long now = System.currentTimeMillis();
+            long last = LAST_SCORE_REQUEST.get();
+            long next = Math.max(now, last + SCORE_MIN_INTERVAL_MS);
+            if (LAST_SCORE_REQUEST.compareAndSet(last, next)) {
+                long wait = next - now;
+                if (wait > 0) {
+                    ThreadUtil.sleep(wait);
+                }
+                return;
+            }
+        }
     }
 
     /**
      * 批量并行获取 bgm.tv 评分
      * <p>
-     * 各订阅源评分的唯一入口, 保证口径一致; 内部使用虚拟线程并发, 自动去重
+     * 各订阅源评分的唯一入口, 保证口径一致; 内部使用虚拟线程并发, 自动去重,
+     * 真实请求受 {@link #SCORE_PERMITS} 与 {@link #SCORE_MIN_INTERVAL_MS} 约束;
+     * 新得到的正分会批量持久化一次, 供重启后复用
      *
      * @param subjectIds bgm 番剧 id 集合
      * @return k: bgm id, v: 评分 (未找到或获取失败为 0.0)
@@ -971,7 +1067,39 @@ public class BgmUtil {
                     .toList();
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
         }
+
+        // 仅持久化新增或变化的正分, 单次写盘
+        Map<String, Object> toPersist = new HashMap<>();
+        scoreMap.forEach((id, score) -> {
+            if (score > 0) {
+                String persistKey = "score:" + id;
+                Object existed = getBgmScoreCache().get(persistKey);
+                if (!Objects.equals(Convert.toDouble(existed), score)) {
+                    toPersist.put(persistKey, score);
+                }
+            }
+        });
+        if (!toPersist.isEmpty()) {
+            try {
+                getBgmScoreCache().putAll(toPersist,
+                        System.currentTimeMillis() + SCORE_PERSIST_TTL_MS);
+            } catch (Exception e) {
+                log.warn("持久化 bgm 评分失败: {}", e.getMessage());
+            }
+        }
+
         return scoreMap;
+    }
+
+    private volatile static PersistCacheUtils bgmScoreCache;
+
+    private synchronized static PersistCacheUtils getBgmScoreCache() {
+        if (Objects.isNull(bgmScoreCache)) {
+            File configDir = ConfigUtil.getConfigDir();
+            File cacheFile = new File(configDir, "cache/bgm-score.json");
+            bgmScoreCache = PersistCacheUtils.getInstance(cacheFile);
+        }
+        return bgmScoreCache;
     }
 
     private volatile static PersistCacheUtils mikanBgmCache;

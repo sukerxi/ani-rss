@@ -80,9 +80,11 @@ export let aniBTGroup = (url) => api.post(`api/aniBTGroup?bgmId=${url}`)
 
 /**
  * 获取AnimeGarden番剧列表
+ * @param bgmUrl 单部番剧链接
+ * @param refresh 手动刷新时绕过缓存
  * @returns {Promise<unknown>}
  */
-export let animeGardenList = (bgmUrl) => api.post(`api/animeGardenList?bgmUrl=${bgmUrl}`)
+export let animeGardenList = (bgmUrl, refresh = false) => api.post(`api/animeGardenList?bgmUrl=${bgmUrl}&refresh=${refresh}`)
 
 /**
  * 获取AnimeGarden番剧的字幕组列表
@@ -381,12 +383,14 @@ export let getAniBySubjectId = (id) => api.post(`api/getAniBySubjectId?id=${id}`
  * @param season 季度
  * @param bgmUrl
  * @param text
+ * @param refresh 手动刷新时绕过缓存
  * @returns {Promise<unknown>}
  */
-export let aniBT = (season, bgmUrl, text) => api.post('api/aniBT', {
+export let aniBT = (season, bgmUrl, text, refresh = false) => api.post('api/aniBT', {
     season,
     bgmUrl,
-    title: text
+    title: text,
+    refresh
 })
 
 /**

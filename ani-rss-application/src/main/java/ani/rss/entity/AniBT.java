@@ -43,6 +43,8 @@ public class AniBT implements Serializable {
         private String bgmId;
         @Schema(description = "封面图片")
         private String cover;
+        @Schema(description = "AniBT 源站评分 (BGM 评分未就绪时临时展示)")
+        private Double rating;
         @Schema(description = "评分")
         private Double score;
         @Schema(description = "标题")

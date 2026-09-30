@@ -26,7 +26,8 @@ public class AnimeGardenController {
     @PostMapping("/animeGardenList")
     public Result<List<AnimeGarden.Week>> animeGardenList(HttpServletRequest request) {
         String bgmUrl = request.getParameter("bgmUrl");
-        return Result.success(animeGardenService.list(bgmUrl));
+        boolean refresh = Boolean.parseBoolean(request.getParameter("refresh"));
+        return Result.success(animeGardenService.list(bgmUrl, refresh));
     }
 
     @Auth

@@ -47,6 +47,21 @@ public class PersistCacheUtils {
     }
 
     @Synchronized("jsonFile")
+    public void putAll(Map<String, Object> values) {
+        putAll(values, 0L);
+    }
+
+    /**
+     * @param time 过期时间戳 (毫秒), 0 表示永不过期
+     */
+    @Synchronized("jsonFile")
+    public void putAll(Map<String, Object> values, Long time) {
+        values.forEach((key, value) ->
+                cacheObjectMap.put(key, new CacheObject(time, key, value)));
+        sync();
+    }
+
+    @Synchronized("jsonFile")
     public void remove(String key) {
         cacheObjectMap.remove(key);
         sync();

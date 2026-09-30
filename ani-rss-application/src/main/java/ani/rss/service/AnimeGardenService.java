@@ -1,5 +1,6 @@
 package ani.rss.service;
 
+import ani.rss.cache.HttpResponseCache;
 import ani.rss.commons.FileUtils;
 import ani.rss.commons.GroupRegexUtils;
 import ani.rss.commons.GsonStatic;
@@ -18,6 +19,7 @@ import com.google.gson.JsonObject;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -25,10 +27,20 @@ import java.util.stream.Collectors;
 public class AnimeGardenService {
     private static final String HOST = "https://api.animes.garden";
 
+    /**
+     * /subjects 源站 max-age=86400; 本地 fresh 5min, stale 24h
+     */
+    private static final Duration SUBJECTS_FRESH_TTL = Duration.ofMinutes(5);
+    private static final Duration SUBJECTS_STALE_TTL = Duration.ofHours(24);
+
     @Resource
     private CacheService cacheService;
 
     public List<AnimeGarden.Week> list(String bgmUrl) {
+        return list(bgmUrl, false);
+    }
+
+    public List<AnimeGarden.Week> list(String bgmUrl, boolean refresh) {
         List<AnimeGarden.Week> weekList = new ArrayList<>();
 
         if (StrUtil.isNotBlank(bgmUrl)) {
@@ -59,13 +71,12 @@ public class AnimeGardenService {
 
         JsonObject bgmCover = cacheService.getBgmCover();
 
-        List<AnimeGarden.Subject> subjectList = HttpReq.get(HOST + "/subjects")
-                .thenFunction(res -> {
-                    HttpReq.assertStatus(res);
-                    JsonObject jsonObject = GsonStatic.fromJson(res.body(), JsonObject.class);
-                    JsonArray subjects = jsonObject.getAsJsonArray("subjects");
-                    return GsonStatic.fromJsonList(subjects, AnimeGarden.Subject.class);
-                });
+        String subjectsBody = HttpResponseCache.get("http:animesgarden:subjects",
+                () -> HttpReq.get(HOST + "/subjects"),
+                SUBJECTS_FRESH_TTL, SUBJECTS_STALE_TTL, refresh);
+        JsonObject subjectsJson = GsonStatic.fromJson(subjectsBody, JsonObject.class);
+        JsonArray subjects = subjectsJson.getAsJsonArray("subjects");
+        List<AnimeGarden.Subject> subjectList = GsonStatic.fromJsonList(subjects, AnimeGarden.Subject.class);
 
         // 统一从 bgm.tv 获取评分 (唯一口径)
         Map<String, Double> scoreMap = BgmUtil.getScores(

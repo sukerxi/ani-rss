@@ -1,5 +1,6 @@
 package ani.rss.service;
 
+import ani.rss.cache.HttpResponseCache;
 import ani.rss.commons.FileUtils;
 import ani.rss.commons.GroupRegexUtils;
 import ani.rss.commons.GsonStatic;
@@ -12,11 +13,14 @@ import ani.rss.util.basic.HttpReq;
 import ani.rss.util.other.AniUtil;
 import ani.rss.util.other.BgmUtil;
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.crypto.SecureUtil;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -26,38 +30,64 @@ import java.util.Set;
 public class AniBTService {
     private static final String HOST = "https://anibt.net";
 
+    /**
+     * 季番列表 fresh 60s, stale 10min (对齐源站 s-maxage=300, stale-while-revalidate=300)
+     */
+    private static final Duration LIST_FRESH_TTL = Duration.ofSeconds(60);
+    private static final Duration LIST_STALE_TTL = Duration.ofMinutes(10);
+
     public AniBT list(AniBTQueryDTO dto) {
         String title = dto.getTitle();
 
         Set<String> subscribedBgmIds = AniUtil.getSubscribedBgmIds();
 
         String bgmUrl = dto.getBgmUrl();
-        String season = dto.getSeason();
+        String seasonInput = dto.getSeason();
 
-        String bgmId = "";
-        if (StrUtil.isNotBlank(bgmUrl)) {
-            bgmId = BgmUtil.getSubjectId(bgmUrl);
-        }
-
+        // 一次性计算, 保证 season 和 bgmId 都是 effectively final
+        final String season;
+        final String bgmId;
         if (StrUtil.isNotBlank(title)) {
             season = "";
             bgmId = "";
+        } else if (StrUtil.isNotBlank(bgmUrl)) {
+            season = seasonInput;
+            bgmId = BgmUtil.getSubjectId(bgmUrl);
+        } else {
+            season = seasonInput;
+            bgmId = "";
         }
 
-        AniBT aniBT = HttpReq.get(HOST + "/api/seasons/anime")
-                .form("season", season)
-                .form("bgmId", bgmId)
-                .form("query", title)
-                .thenFunction(res -> {
-                    HttpReq.assertStatus(res);
-                    JsonObject jsonObject = GsonStatic.fromJson(res.body(), JsonObject.class);
-                    JsonObject data = jsonObject.getAsJsonObject("data");
-                    return GsonStatic.fromJson(data, AniBT.class);
-                });
+        boolean force = Boolean.TRUE.equals(dto.getRefresh());
+        String query = StrUtil.blankToDefault(title, "");
+        String body;
+        if (StrUtil.isNotBlank(title)) {
+            // 搜索请求不缓存, 始终实时
+            body = HttpReq.get(HOST + "/api/seasons/anime")
+                    .form("season", season)
+                    .form("bgmId", bgmId)
+                    .form("query", query)
+                    .thenFunction(res -> {
+                        HttpReq.assertStatus(res);
+                        return res.body();
+                    });
+        } else {
+            String cacheKey = "http:anibt:seasons:" + SecureUtil.md5(season + "|" + bgmId);
+            body = HttpResponseCache.get(cacheKey,
+                    () -> HttpReq.get(HOST + "/api/seasons/anime")
+                            .form("season", season)
+                            .form("bgmId", bgmId)
+                            .form("query", ""),
+                    LIST_FRESH_TTL, LIST_STALE_TTL, force);
+        }
+
+        JsonObject jsonObject = GsonStatic.fromJson(body, JsonObject.class);
+        JsonObject data = jsonObject.getAsJsonObject("data");
+        AniBT aniBT = GsonStatic.fromJson(data, AniBT.class);
 
         List<AniBT.ByWeekday> byWeekday = aniBT.getByWeekday();
 
-        // 统一从 bgm.tv 获取全部番剧评分 (唯一口径)
+        // 统一从 bgm.tv 获取全部番剧评分 (唯一口径), 热路径命中本地缓存
         List<String> allBgmIds = byWeekday.stream()
                 .map(AniBT.ByWeekday::getAnimes)
                 .flatMap(List::stream)
@@ -76,7 +106,12 @@ public class AniBTService {
                     })
                     .peek(anime -> {
                         String bgmIdOfAnime = anime.getBgmId();
-                        anime.setScore(scoreMap.getOrDefault(bgmIdOfAnime, 0.0))
+                        Double bgmScore = scoreMap.get(bgmIdOfAnime);
+                        // BGM 评分未就绪时先用 AniBT 源站评分临时展示, 后续由 BGM 缓存校准
+                        double score = (bgmScore != null && bgmScore > 0)
+                                ? bgmScore
+                                : ObjectUtil.defaultIfNull(anime.getRating(), 0.0);
+                        anime.setScore(score)
                                 .setExists(subscribedBgmIds.contains(bgmIdOfAnime));
                     })
                     .sorted(Comparator.comparingDouble(AniBT.Anime::getScore).reversed())
