@@ -99,7 +99,8 @@
         <div v-loading="loading" class="scroll-container">
           <el-tabs v-model="activeName" class="week-tabs">
             <el-tab-pane v-for="week in data.weeks" :key="week.weekLabel"
-                         :label="week.weekLabel" :name="week.weekLabel" lazy>
+                         :label="week.weekLabel === 'Search' ? '搜索结果' : week.weekLabel"
+                         :name="week.weekLabel" lazy>
               <el-scrollbar class="week-pane-scrollbar">
                 <div class="collapse-content">
                   <el-collapse accordion @change="collapseChange">
@@ -530,7 +531,7 @@ let openUrl = (url) => window.open(url)
 
 .scroll-container {
   margin: 8px 0 4px 0;
-  height: 600px;
+  height: min(600px, 58vh);
 }
 
 .week-tabs {

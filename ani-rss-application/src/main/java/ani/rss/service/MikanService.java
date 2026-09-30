@@ -2,6 +2,7 @@ package ani.rss.service;
 
 import ani.rss.cache.CacheUtils;
 import ani.rss.commons.GroupRegexUtils;
+import ani.rss.comparator.WeekComparator;
 import ani.rss.entity.*;
 import ani.rss.util.basic.HttpReq;
 import ani.rss.util.other.AniUtil;
@@ -53,6 +54,10 @@ public class MikanService {
         Mikan mikan = search(text, season);
 
         List<Mikan.Week> weeks = mikan.getWeeks();
+
+        // 与其它订阅源保持一致：从今天起按星期升序（三、四、五、六、日、一、二）
+        WeekComparator weekComparator = new WeekComparator();
+        weeks.sort(Comparator.comparing(Mikan.Week::getWeekLabel, weekComparator));
 
         List<MikanInfo> items = weeks.stream()
                 .map(Mikan.Week::getItems)
