@@ -19,6 +19,18 @@ public class GroupRegex implements Serializable {
     @Schema(description = "标签集合")
     private List<String> tags;
 
+    /**
+     * 与 {@link #regexList} 一一对应的近期命中条数，用于前端展示组合热度
+     */
+    @Schema(description = "每个标签组合的近期命中条数")
+    private List<Integer> counts;
+
+    /**
+     * 与 {@link #regexList} 一一对应的命中样例标题
+     */
+    @Schema(description = "每个标签组合的命中样例标题")
+    private List<String> sampleTitles;
+
     @Data
     @Accessors(chain = true)
     @Schema(description = "正则表达式项")

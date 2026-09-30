@@ -215,9 +215,12 @@ public class AniUtil {
 
         subgroup = StrUtil.blankToDefault(subgroup, "未知字幕组");
 
+        // 同一 RSS 在本流程内可能连续用于「探测字幕组」与「推断偏移」，只拉取一次
+        List<Item> rssItems = null;
+
         if (subgroup.equals("未知字幕组")) {
-            List<Item> items = ItemsUtil.getItems(ani, url, subgroup);
-            subgroup = ItemsUtil.getSubgroup(items);
+            rssItems = ItemsUtil.getItems(ani, url, subgroup);
+            subgroup = ItemsUtil.getSubgroup(rssItems);
         }
 
         ani.setSubgroup(subgroup);
@@ -241,11 +244,13 @@ public class AniUtil {
 
         // 自动推断剧集偏移
         if (CONFIG.getOffset()) {
-            List<Item> items = ItemsUtil.getItems(ani, url, subgroup);
-            if (items.isEmpty()) {
+            if (rssItems == null) {
+                rssItems = ItemsUtil.getItems(ani, url, subgroup);
+            }
+            if (rssItems.isEmpty()) {
                 return ani;
             }
-            Double offset = -(items.stream()
+            Double offset = -(rssItems.stream()
                     .map(Item::getEpisode)
                     .min(Comparator.comparingDouble(i -> i))
                     .get() - 1);

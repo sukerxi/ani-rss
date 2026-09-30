@@ -3,24 +3,62 @@
              width="500"
              :close-on-click-modal="false"
              :close-on-press-escape="false"
-             :show-close="false">
+             :show-close="batchFinished">
     <div>
-      <el-progress :percentage="Number.parseInt((batchAdditionNum / rssList.length) * 100.0)"/>
+      <el-progress :percentage="batchTotal ? Number.parseInt((batchAdditionNum / batchTotal) * 100.0) : 0"/>
     </div>
     <div>
-      {{ batchAdditionNum }} / {{ rssList.length }}
+      {{ batchAdditionNum }} / {{ batchTotal }}
+    </div>
+    <div v-if="batchFinished" class="batch-result">
+      <el-text size="small">
+        成功 {{ batchSuccessCount }} 部，失败 {{ batchFailCount }} 部
+      </el-text>
+      <el-scrollbar max-height="220px" class="batch-result-scroll">
+        <div v-for="(result, index) in batchResults" :key="index" class="batch-result-row">
+          <el-tag size="small" :type="result.ok ? 'success' : 'danger'">
+            {{ result.ok ? '成功' : '失败' }}
+          </el-tag>
+          <el-text size="small" truncated class="batch-result-name">{{ result.name }}</el-text>
+          <el-text v-if="!result.ok" size="small" type="danger" class="batch-result-message">
+            {{ result.message }}
+          </el-text>
+        </div>
+      </el-scrollbar>
+    </div>
+    <div v-if="batchFinished" class="dialog-footer">
+      <el-button bg text @click="batchAdditionDialogVisible = false">关闭</el-button>
     </div>
   </el-dialog>
   <el-dialog v-model="matchDialogVisible" align-center center title="匹配" width="auto">
+    <el-alert
+        :closable="false"
+        class="match-hint"
+        show-icon
+        title="同一选项里的多个标签需同时命中才会下载（AND）；只要有一个标签没命中，该资源就会被过滤。拿不准请选「全部」。"
+        type="info"/>
     <div class="match-content">
       <el-radio-group v-model="addAni.match">
-        <div v-for="regexItems in regexList" class="match-item">
-          <el-radio :label="JSON.stringify(regexItems)"
-                    :value="JSON.stringify(regexItems.map(it => it.regex))">
-            <el-tag v-if="regexItems.length" v-for="regexItem in regexItems" class="tag-margin">
-              {{ regexItem.label }}
-            </el-tag>
-            <el-tag v-else type="success">全部</el-tag>
+        <div v-for="(regexItems, index) in regexList" :key="index" class="match-item">
+          <el-radio :value="JSON.stringify(regexItems.map(it => it.regex))">
+            <div class="match-option">
+              <template v-if="regexItems.length">
+                <el-tag v-for="regexItem in regexItems" :key="regexItem.label"
+                        size="small" class="tag-margin">
+                  {{ regexItem.label }}
+                </el-tag>
+              </template>
+              <el-tag v-else size="small" type="success">全部</el-tag>
+              <el-tooltip
+                  v-if="regexItems.length && matchMeta(index).sampleTitle"
+                  :content="`命中样例: ${matchMeta(index).sampleTitle}`"
+                  placement="top"
+                  :show-after="150">
+                <el-tag size="small" type="info" class="match-count">
+                  近期 {{ matchMeta(index).count }} 条
+                </el-tag>
+              </el-tooltip>
+            </div>
           </el-radio>
         </div>
       </el-radio-group>
@@ -91,21 +129,38 @@
                             <template #title>
                               <div class="group-title-wrapper">
                                 <div class="group-checkbox-wrapper">
-                                  <el-checkbox :value="JSON.stringify(group)" class="checkbox-margin" @click.stop/>
+                                  <el-checkbox :value="JSON.stringify(group)"
+                                               :disabled="group._exists"
+                                               class="checkbox-margin" @click.stop/>
                                 </div>
                                 <div class="group-label">
                                   <el-text style="max-width: 100px;" truncated>{{ group.label }}</el-text>
                                   &nbsp;
                                   <el-text class="mx-1" size="small">{{ group['updateDay'] }}</el-text>
                                 </div>
-                                <div v-if="showTag()">
-                                  <el-tag v-for="tag in group['groupRegex']['tags']"
-                                          class="tag-margin">
-                                    {{ tag }}
-                                  </el-tag>
-                                </div>
+                                <el-tooltip
+                                    v-if="isWide && group['groupRegex']['tags'].length"
+                                    :content="group['groupRegex']['tags'].join('、')"
+                                    placement="top"
+                                    :show-after="150">
+                                  <div class="group-tags">
+                                    <el-tag v-for="tag in group['groupRegex']['tags']"
+                                            :key="tag"
+                                            size="small"
+                                            class="tag-margin">
+                                      {{ tag }}
+                                    </el-tag>
+                                  </div>
+                                </el-tooltip>
                                 <div class="group-action">
-                                  <el-button bg @click.stop="callback(group)" icon="Plus">
+                                  <el-tooltip v-if="group._exists" content="该番剧已订阅" placement="top">
+                                    <span>
+                                      <el-button bg disabled icon="Plus">
+                                        添加
+                                      </el-button>
+                                    </span>
+                                  </el-tooltip>
+                                  <el-button v-else bg @click.stop="callback(group)" icon="Plus">
                                     添加
                                   </el-button>
                                 </div>
@@ -148,11 +203,19 @@
 </template>
 
 <script setup>
-import {ref} from "vue";
+import {computed, onBeforeUnmount, onMounted, ref} from "vue";
 import {ElMessage, ElText} from "element-plus";
 import {DocumentCopy, Download as DownloadIcon} from "@element-plus/icons-vue";
 import {proxyImage} from "@/js/global.js";
 import * as http from "@/js/http.js";
+
+// 标签列只在宽屏下展示（随窗口尺寸实时响应）
+const isWide = ref(typeof window !== 'undefined' && window.innerWidth > 900)
+const updateIsWide = () => {
+  isWide.value = window.innerWidth > 900
+}
+onMounted(() => window.addEventListener('resize', updateIsWide))
+onBeforeUnmount(() => window.removeEventListener('resize', updateIsWide))
 
 // 批量添加订阅
 let rssList = ref([]);
@@ -272,7 +335,10 @@ let collapseChange = (v) => {
   groupLoading.value = true
   http.mikanGroup(v)
       .then(res => {
-        groups.value[v] = res.data
+        // 番剧已订阅时，禁用其下所有字幕组的选择，避免重复添加
+        const bangumiExists = data.value.weeks
+            .some(week => week.items.some(item => item.url === v && item.exists))
+        groups.value[v] = (res.data ?? []).map(group => ({...group, _exists: bangumiExists}))
       })
       .finally(() => {
         groupLoading.value = false
@@ -289,22 +355,31 @@ let addAni = ref({
 })
 
 let regexList = ref([])
+// 与 regexList 一一对应的近期命中条数 / 样例标题（末尾「全部」选项补 null 占位）
+let regexCounts = ref([])
+let regexSamples = ref([])
+
+const matchMeta = (index) => ({
+  count: regexCounts.value[index] ?? 0,
+  sampleTitle: regexSamples.value[index] ?? ''
+})
 
 let callback = v => {
-  let {rss, bgmUrl, label} = v
-  regexList.value = JSON.parse(JSON.stringify(v.groupRegex.regexList))
+  const groupRegex = v.groupRegex || {}
+  regexList.value = JSON.parse(JSON.stringify(groupRegex.regexList ?? []))
+  regexCounts.value = [...(groupRegex.counts ?? [])]
+  regexSamples.value = [...(groupRegex.sampleTitles ?? [])]
 
-  addAni.value.url = rss
-  addAni.value.bgmUrl = bgmUrl
-  addAni.value.subgroup = label
+  addAni.value.url = v.rss
+  addAni.value.bgmUrl = v.bgmUrl
+  addAni.value.subgroup = v.label
   addAni.value.match = '[]'
 
+  // 「全部」选项放在最后
   regexList.value.push([])
+  regexCounts.value.push(null)
+  regexSamples.value.push(null)
   matchDialogVisible.value = true
-}
-
-let showTag = () => {
-  return window.innerWidth > 900;
 }
 
 let open = url => {
@@ -317,29 +392,49 @@ let emit = defineEmits(['callback'])
 
 
 let batchAdditionNum = ref(0)
+let batchTotal = ref(0)
+let batchResults = ref([])
 let batchAdditionDialogVisible = ref(false)
 
-let batchAddition = async () => {
-  batchAdditionNum.value = 0
-  batchAdditionDialogVisible.value = true
-  let getBangumiId = (url) => {
-    const parsedUrl = new URL(url);
-    return parsedUrl.searchParams.get('bangumiId');
-  };
+const batchFinished = computed(() =>
+    batchTotal.value > 0 && batchAdditionNum.value >= batchTotal.value
+)
+const batchSuccessCount = computed(() => batchResults.value.filter(item => item.ok).length)
+const batchFailCount = computed(() => batchResults.value.filter(item => !item.ok).length)
 
-  try {
-    ElMessage.success("添加中....")
-    let map = rssList.value.reduce((acc, item) => {
-      let bangumiId = getBangumiId(JSON.parse(item)['rss']);
-      if (!acc[bangumiId]) {
-        acc[bangumiId] = [];
-      }
-      acc[bangumiId].push(JSON.parse(item));
-      return acc;
-    }, {})
-    for (let item of Object.values(map)) {
+let batchAddition = async () => {
+  if (!rssList.value.length) {
+    return
+  }
+
+  const getBangumiId = (url) => new URL(url).searchParams.get('bangumiId')
+
+  // 按番剧聚合，第一部作为主 RSS，其余作为备用 RSS
+  const groupMap = rssList.value.reduce((acc, raw) => {
+    const item = JSON.parse(raw)
+    const bangumiId = getBangumiId(item['rss'])
+    if (!acc[bangumiId]) {
+      acc[bangumiId] = []
+    }
+    acc[bangumiId].push(item)
+    return acc
+  }, {})
+  const bangumiGroups = Object.values(groupMap)
+
+  batchAdditionNum.value = 0
+  batchTotal.value = bangumiGroups.length
+  batchResults.value = []
+  batchAdditionDialogVisible.value = true
+
+  let hasSuccess = false
+  for (const items of bangumiGroups) {
+    const name = items.map(item => item.label).filter(Boolean).join(' / ') || items[0]['rss']
+    try {
+      // 直接带上 subgroup/bgmUrl，后端无需再次抓取 Mikan 页面
       let ani = {
-        "url": item[0]['rss'],
+        "url": items[0]['rss'],
+        "bgmUrl": items[0]['bgmUrl'],
+        "subgroup": items[0]['label'],
         "season": 1,
         "offset": 0,
         "title": "",
@@ -350,28 +445,33 @@ let batchAddition = async () => {
       }
 
       ani = (await http.rssToAni(ani)).data
-      if (item.length > 1) {
-        ani.standbyRssList = item.slice(1)
-            .map(o => {
-              return {
-                label: o.label,
-                url: o['rss'],
-                offset: 0
-              }
-            })
+      // rssToAni 的返回值可能缺省这两个字段，再次确保与所选字幕组一致
+      ani.subgroup = items[0]['label']
+      ani.bgmUrl = items[0]['bgmUrl']
+      if (items.length > 1) {
+        ani.standbyRssList = items.slice(1).map(o => ({
+          label: o.label,
+          url: o['rss'],
+          offset: 0
+        }))
       }
-      batchAdditionNum.value += item.length
-      await http.addAni(ani)
+      const res = await http.addAni(ani)
+      batchResults.value.push({name, ok: true, message: res.message})
+      hasSuccess = true
+    } catch (e) {
+      // 单个失败不影响其余订阅继续添加
+      batchResults.value.push({name, ok: false, message: e?.message || String(e)})
+    } finally {
+      batchAdditionNum.value += 1
     }
-    ElMessage.success("添加成功")
+  }
 
-    setTimeout(() => {
-      location.reload()
-    }, 1000)
-  } catch (e) {
-    ElMessage.error(e)
-  } finally {
-    batchAdditionDialogVisible.value = false
+  if (hasSuccess) {
+    ElMessage.success(`成功添加 ${batchSuccessCount.value}/${batchTotal.value} 部`)
+    // 已订阅状态刷新与字幕组缓存失效，避免继续重复选择
+    window.$reLoadList?.()
+    rssList.value = []
+    groups.value = {}
   }
 }
 
@@ -392,11 +492,6 @@ let openUrl = (url) => window.open(url)
 <style scoped>
 .el-collapse {
   --el-collapse-header-height: 55px;
-}
-
-.match-item {
-  margin-right: 12px;
-  display: inline;
 }
 
 .tag-margin {
@@ -526,8 +621,61 @@ let openUrl = (url) => window.open(url)
 }
 
 .match-content {
-  max-width: 500px;
-  min-width: 200px;
+  max-width: 560px;
+  min-width: 240px;
   margin-bottom: 4px;
+}
+
+.match-hint {
+  max-width: 560px;
+  margin-bottom: 10px;
+}
+
+.match-item {
+  display: block;
+  margin: 0 0 8px 0;
+}
+
+.match-option {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.match-count {
+  cursor: default;
+}
+
+.group-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.batch-result {
+  margin-top: 12px;
+}
+
+.batch-result-scroll {
+  margin-top: 6px;
+}
+
+.batch-result-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+}
+
+.batch-result-name {
+  flex: 0 1 180px;
+}
+
+.batch-result-message {
+  flex: 1;
+  min-width: 0;
 }
 </style>

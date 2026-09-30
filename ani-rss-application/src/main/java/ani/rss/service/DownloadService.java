@@ -64,7 +64,9 @@ public class DownloadService {
         Boolean downloadNew = ani.getDownloadNew();
         List<Double> notDownload = ani.getNotDownload();
 
-        List<TorrentsInfo> torrentsInfos = TorrentUtil.getTorrentsInfos();
+        // 一轮处理内复用下载器任务快照，避免每个条目都全量查询一次
+        DownloadContext context = DownloadContext.snapshot();
+        List<TorrentsInfo> torrentsInfos = context.getTorrentsInfos();
 
         int currentDownloadCount = 0;
         List<Item> items = ItemsUtil.getItems(ani);
@@ -185,7 +187,7 @@ public class DownloadService {
                         // 删除失败或者不允许删除
                         continue;
                     }
-                    torrentsInfos.remove(standbyRSS);
+                    context.removeTorrentsInfo(standbyRSS);
                 }
             }
 
@@ -203,7 +205,7 @@ public class DownloadService {
             }
 
             // 未开启rename不进行检测
-            if (itemDownloaded(ani, item, true)) {
+            if (itemDownloaded(ani, item, true, context)) {
                 log.info("本地文件已存在 {}", reName);
                 if (master && !is5) {
                     currentDownloadCount++;
@@ -226,7 +228,7 @@ public class DownloadService {
                 continue;
             }
 
-            deleteStandbyRss(ani, item);
+            deleteStandbyRss(ani, item, context);
 
             if (!AniUtil.ANI_LIST.contains(ani)) {
                 return;
@@ -235,6 +237,9 @@ public class DownloadService {
             sync = true;
 
             download(ani, item, savePath, saveTorrent);
+
+            // 实际添加了下载任务，刷新快照供后续条目判重
+            context.refresh();
 
             if (master && !is5) {
                 currentDownloadCount++;
@@ -269,10 +274,11 @@ public class DownloadService {
     /**
      * 删除备用rss
      *
-     * @param ani  订阅
-     * @param item 资源项
+     * @param ani     订阅
+     * @param item    资源项
+     * @param context 下载器任务快照
      */
-    public void deleteStandbyRss(Ani ani, Item item) {
+    public void deleteStandbyRss(Ani ani, Item item, DownloadContext context) {
         Boolean standbyRss = CONFIG.getStandbyRss();
         Boolean coexist = CONFIG.getCoexist();
         Boolean delete = CONFIG.getDelete();
@@ -299,7 +305,7 @@ public class DownloadService {
 
         String downloadPath = getDownloadPath(ani);
 
-        List<TorrentsInfo> torrentsInfos = TorrentUtil.findTorrentsInfosByAni(ani);
+        List<TorrentsInfo> torrentsInfos = context.findBySavePath(downloadPath);
 
         // 删除备用rss任务
         for (TorrentsInfo torrentsInfo : torrentsInfos) {
@@ -310,10 +316,11 @@ public class DownloadService {
             String s = ReUtil.get(StringEnum.SEASON_REG, name, 0);
             if (s.equalsIgnoreCase(episode)) {
                 TorrentUtil.delete(torrentsInfo, true, true);
+                context.removeTorrentsInfo(torrentsInfo);
             }
         }
 
-        List<File> files = FileUtils.listFileList(downloadPath);
+        List<File> files = context.listFiles(downloadPath);
         for (File file : files) {
             String fileName = file.getName();
             if (!ReUtil.contains(StringEnum.SEASON_REG, fileName)) {
@@ -632,10 +639,23 @@ public class DownloadService {
      *
      * @param ani          订阅
      * @param item         资源项
-     * @param downloadList 下载列表
+     * @param downloadList 是否校验下载器任务列表
      * @return 是否已下载
      */
     public Boolean itemDownloaded(Ani ani, Item item, Boolean downloadList) {
+        return itemDownloaded(ani, item, downloadList, null);
+    }
+
+    /**
+     * 判断是否已经下载过
+     *
+     * @param ani          订阅
+     * @param item         资源项
+     * @param downloadList 是否校验下载器任务列表
+     * @param context      复用的任务/文件快照，为空时按需拉取
+     * @return 是否已下载
+     */
+    public Boolean itemDownloaded(Ani ani, Item item, Boolean downloadList, DownloadContext context) {
         Boolean rename = CONFIG.getRename();
         if (!rename) {
             return false;
@@ -658,7 +678,9 @@ public class DownloadService {
         Double episode = item.getEpisode();
 
         if (downloadList) {
-            List<TorrentsInfo> torrentsInfoList = TorrentUtil.findTorrentsInfosByAni(ani);
+            List<TorrentsInfo> torrentsInfoList = context != null
+                    ? context.findBySavePath(getDownloadPath(ani))
+                    : TorrentUtil.findTorrentsInfosByAni(ani);
             for (TorrentsInfo torrentsInfo : torrentsInfoList) {
                 String name = torrentsInfo.getName();
                 if (!name.equalsIgnoreCase(reName)) {
@@ -671,7 +693,9 @@ public class DownloadService {
         }
 
         String downloadPath = getDownloadPath(ani);
-        List<File> files = FileUtils.listFileList(downloadPath);
+        List<File> files = context != null
+                ? context.listFiles(downloadPath)
+                : FileUtils.listFileList(downloadPath);
 
         if (files.stream()
                 .filter(file -> FileUtils.isVideoFormat(file.getName()))

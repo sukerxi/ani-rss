@@ -1,5 +1,6 @@
 package ani.rss.service;
 
+import ani.rss.cache.CacheUtils;
 import ani.rss.commons.GroupRegexUtils;
 import ani.rss.entity.*;
 import ani.rss.util.basic.HttpReq;
@@ -26,6 +27,7 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -251,74 +253,123 @@ public class MikanService {
      * @return 字幕组列表
      */
     public List<Mikan.Group> getGroups(String url) {
+        String cacheKey = "mikan:groups:" + url;
+        List<Mikan.Group> cached = CacheUtils.get(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+
         List<Mikan.Group> groupList = HttpReq.get(url)
-                .thenFunction(res -> {
-                    Document document = Jsoup.parse(res.body());
-                    List<Mikan.Group> groups = new ArrayList<>();
-
-                    String bgmUrl = "";
-                    Elements bangumiInfos = document.select(".bangumi-info");
-                    for (Element bangumiInfo : bangumiInfos) {
-                        String string = bangumiInfo.ownText();
-                        if (string.equals("Bangumi番组计划链接：")) {
-                            bgmUrl = bangumiInfo.selectFirst("a")
-                                    .attr("href");
-                        }
-                    }
-
-                    Elements subgroupTitles = document.select(".leftbar-item");
-
-                    for (Element subgroupText : subgroupTitles) {
-                        Mikan.Group group = new Mikan.Group();
-                        List<Mikan.Item> items = new ArrayList<>();
-                        group.setItems(items)
-                                .setBgmUrl(bgmUrl);
-                        String label = subgroupText.select("a.subgroup-name").text().trim();
-                        // id锚点，例如 #213
-                        String id = subgroupText.select("a.subgroup-name").attr("data-anchor");
-                        String attr = document.selectFirst(id).selectFirst(".mikan-rss").attr("href");
-                        group.setLabel(label)
-                                .setRss(getMikanHost() + attr);
-                        groups.add(group);
-                        // 字幕组更新日期
-                        String day = subgroupText.select(".date").text().trim();
-                        group.setUpdateDay(day);
-
-                        Element table = document.selectFirst(id).nextElementSibling();
-                        Element tbody = table.selectFirst("tbody");
-                        for (Element tr : tbody.children()) {
-                            String title = tr.select("a").get(0).ownText();
-                            String magnet = tr.select("a").get(1).attr("data-clipboard-text");
-                            String formatSize = tr.select("td").get(2).text().trim();
-                            String dateStr = tr.select("td").get(3).text().trim();
-
-                            String torrent = tr.select("a").get(2).attr("href");
-
-                            String mikanHost = getMikanHost();
-
-                            items.add(
-                                    new Mikan.Item()
-                                            .setTitle(title)
-                                            .setMagnet(magnet)
-                                            .setFormatSize(formatSize)
-                                            .setCreatedAt(DateUtil.parse(dateStr))
-                                            .setTorrent(mikanHost + torrent)
-                            );
-                        }
-                    }
-
-                    return groups;
-                });
-
+                .thenFunction(res -> parseBangumiGroups(Jsoup.parse(res.body())));
 
         for (Mikan.Group group : groupList) {
-            List<Mikan.Item> items = group.getItems();
-            GroupRegex groupRegx = GroupRegexUtils.toGroupRegx(items, Mikan.Item::getTitle);
-
+            GroupRegex groupRegx = GroupRegexUtils.toGroupRegx(group.getItems(), Mikan.Item::getTitle);
             group.setGroupRegex(groupRegx);
         }
 
+        // 字幕组页体量较大，短缓存避免展开/添加时短时间重复抓取
+        CacheUtils.put(cacheKey, groupList, TimeUnit.MINUTES.toMillis(1));
         return groupList;
+    }
+
+    /**
+     * 解析番剧详情页上的全部字幕组，{@link #getGroups(String)} 与
+     * {@link #getMikanInfo(String)} 共用，避免两处解析逻辑分叉
+     */
+    static List<Mikan.Group> parseBangumiGroups(Document document) {
+        String bgmUrl = parseBgmUrl(document);
+        List<Mikan.Group> groups = new ArrayList<>();
+
+        Elements subgroupTitles = document.select(".leftbar-item");
+        for (Element subgroupText : subgroupTitles) {
+            Element nameElement = subgroupText.selectFirst("a.subgroup-name");
+            if (Objects.isNull(nameElement)) {
+                continue;
+            }
+            String label = nameElement.text().trim();
+            // id锚点，例如 #213
+            String id = nameElement.attr("data-anchor");
+
+            Element anchor = StrUtil.isNotBlank(id) ? document.selectFirst(id) : null;
+            if (Objects.isNull(anchor)) {
+                // 页面结构异常时跳过该字幕组，不影响其他字幕组展示
+                continue;
+            }
+
+            Mikan.Group group = new Mikan.Group();
+            List<Mikan.Item> items = new ArrayList<>();
+            group.setItems(items)
+                    .setBgmUrl(bgmUrl)
+                    .setLabel(label)
+                    .setSubgroupId(id.replace("#", "").trim())
+                    .setUpdateDay(subgroupText.select(".date").text().trim());
+
+            Element rssElement = anchor.selectFirst(".mikan-rss");
+            if (Objects.nonNull(rssElement)) {
+                group.setRss(getMikanHost() + rssElement.attr("href"));
+            }
+
+            Element table = anchor.nextElementSibling();
+            if (Objects.nonNull(table)) {
+                parseGroupItems(table, items);
+            }
+            groups.add(group);
+        }
+        return groups;
+    }
+
+    /**
+     * 解析某个字幕组的资源表格，单行结构异常时跳过该行
+     */
+    private static void parseGroupItems(Element table, List<Mikan.Item> items) {
+        Element tbody = table.selectFirst("tbody");
+        if (Objects.isNull(tbody)) {
+            return;
+        }
+        String mikanHost = getMikanHost();
+        for (Element tr : tbody.children()) {
+            Elements links = tr.select("a");
+            Elements tds = tr.select("td");
+            if (links.size() < 3 || tds.size() < 4) {
+                continue;
+            }
+            String title = links.get(0).ownText();
+            String magnet = links.get(1).attr("data-clipboard-text");
+            String formatSize = tds.get(2).text().trim();
+            String dateStr = tds.get(3).text().trim();
+            String torrent = links.get(2).attr("href");
+
+            Date createdAt = null;
+            try {
+                createdAt = DateUtil.parse(dateStr);
+            } catch (Exception ignored) {
+            }
+
+            items.add(
+                    new Mikan.Item()
+                            .setTitle(title)
+                            .setMagnet(magnet)
+                            .setFormatSize(formatSize)
+                            .setCreatedAt(createdAt)
+                            .setTorrent(mikanHost + torrent)
+            );
+        }
+    }
+
+    /**
+     * 解析详情页上的 Bangumi 链接
+     */
+    private static String parseBgmUrl(Document document) {
+        Elements bangumiInfos = document.select(".bangumi-info");
+        for (Element bangumiInfo : bangumiInfos) {
+            if (bangumiInfo.ownText().equals("Bangumi番组计划链接：")) {
+                Element link = bangumiInfo.selectFirst("a");
+                if (Objects.nonNull(link)) {
+                    return link.attr("href");
+                }
+            }
+        }
+        return "";
     }
 
     public static MikanInfo getMikanInfo(String bangumiId) {
@@ -342,70 +393,13 @@ public class MikanService {
                         mikanInfo.setTitle(bangumiTitle.text().trim());
                     }
 
-                    Elements bangumiInfos = html.select(".bangumi-info");
-                    for (Element bangumiInfo : bangumiInfos) {
-                        String string = bangumiInfo.ownText();
-                        if (string.equals("Bangumi番组计划链接：")) {
-                            String bgmUrl = bangumiInfo.selectFirst("a")
-                                    .attr("href");
-                            mikanInfo.setBgmUrl(bgmUrl);
-                        }
+                    String bgmUrl = parseBgmUrl(html);
+                    if (StrUtil.isNotBlank(bgmUrl)) {
+                        mikanInfo.setBgmUrl(bgmUrl);
                     }
 
                     // 获取字幕组
-                    List<Mikan.Group> groups = new ArrayList<>();
-
-                    Elements subgroupTitles = html.select(".leftbar-item");
-
-                    for (Element subgroupText : subgroupTitles) {
-                        Mikan.Group group = new Mikan.Group();
-                        groups.add(group);
-
-                        List<Mikan.Item> items = new ArrayList<>();
-                        group.setItems(items);
-
-                        String label = subgroupText.select("a.subgroup-name").text().trim();
-
-                        // id锚点，例如 #213
-                        String id = subgroupText.select("a.subgroup-name").attr("data-anchor");
-
-                        String attr = html.selectFirst(id)
-                                .selectFirst(".mikan-rss")
-                                .attr("href");
-
-                        group.setLabel(label)
-                                .setSubgroupId(id.replace("#", "").trim())
-                                .setRss(getMikanHost() + attr);
-
-                        // 字幕组更新日期
-                        String day = subgroupText.select(".date").text().trim();
-
-                        group.setUpdateDay(day);
-
-                        Element table = html.selectFirst(id).nextElementSibling();
-                        Element tbody = table.selectFirst("tbody");
-                        for (Element tr : tbody.children()) {
-                            String title = tr.select("a").get(0).ownText();
-                            String magnet = tr.select("a").get(1).attr("data-clipboard-text");
-                            String formatSize = tr.select("td").get(2).text().trim();
-                            String dateStr = tr.select("td").get(3).text().trim();
-
-                            String torrent = tr.select("a").get(2).attr("href");
-
-                            String mikanHost = getMikanHost();
-
-                            items.add(
-                                    new Mikan.Item()
-                                            .setTitle(title)
-                                            .setMagnet(magnet)
-                                            .setFormatSize(formatSize)
-                                            .setCreatedAt(DateUtil.parse(dateStr))
-                                            .setTorrent(mikanHost + torrent)
-                            );
-                        }
-                    }
-
-                    mikanInfo.setGroups(groups);
+                    mikanInfo.setGroups(parseBangumiGroups(html));
                     return mikanInfo;
                 });
     }

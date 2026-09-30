@@ -3,6 +3,7 @@ package ani.rss.service;
 import ani.rss.commons.ExceptionUtils;
 import ani.rss.commons.FileUtils;
 import ani.rss.commons.PinyinUtils;
+import ani.rss.commons.RegexRuleUtils;
 import ani.rss.comparator.WeekComparator;
 import ani.rss.entity.*;
 import ani.rss.entity.dto.IdDTO;
@@ -38,11 +39,24 @@ public class AniService {
     private ClearService clearService;
 
     /**
+     * 保存前校验订阅内的正则规则，避免非法正则在 RSS 轮询期静默跳过整个订阅
+     */
+    private void validateAniRules(Ani ani) {
+        RegexRuleUtils.validateRules(ani.getMatch());
+        RegexRuleUtils.validateRules(ani.getExclude());
+        if (Boolean.TRUE.equals(ani.getCustomEpisode())) {
+            RegexRuleUtils.validateSingle(ani.getCustomEpisodeStr());
+        }
+    }
+
+    /**
      * 添加订阅
      *
      * @param ani 订阅
      */
     public void addAni(Ani ani) {
+        validateAniRules(ani);
+
         Optional<Ani> first = AniUtil.ANI_LIST.stream()
                 .filter(it -> it.getId().equals(ani.getId()))
                 .findFirst();
@@ -99,6 +113,8 @@ public class AniService {
      * @param ani 订阅
      */
     public void setAni(Ani ani) {
+        validateAniRules(ani);
+
         Optional<Ani> first = AniUtil.ANI_LIST.stream()
                 .filter(it -> !it.getId().equals(ani.getId()))
                 .filter(it -> it.getTitle().equals(ani.getTitle()) && it.getSeason().equals(ani.getSeason()))
@@ -368,10 +384,13 @@ public class AniService {
     }
 
     public Map<String, Object> previewAni(Ani ani) {
-        List<Item> items = ItemsUtil.getItems(ani);
+        List<RejectedItem> rejected = new ArrayList<>();
+        List<Item> items = ItemsUtil.getItems(ani, rejected);
 
         String downloadPath = downloadService.getDownloadPath(ani);
 
+        // 预览不校验下载器任务（懒加载），目录列表在整个预览内只扫描一次
+        DownloadContext context = DownloadContext.lazy();
         for (Item item : items) {
             item.setHasDownloaded(false);
             File torrent = TorrentUtil.getTorrent(ani, item);
@@ -379,18 +398,21 @@ public class AniService {
                 item.setHasDownloaded(true);
                 continue;
             }
-            if (downloadService.itemDownloaded(ani, item, false)) {
+            if (downloadService.itemDownloaded(ani, item, false, context)) {
                 item.setHasDownloaded(true);
             }
         }
 
         List<Integer> omitList = ItemsUtil.omitList(ani, items);
+        List<String> orphanRules = ItemsUtil.orphanRules(ani);
 
-        return Map.of(
-                "downloadPath", downloadPath,
-                "items", items,
-                "omitList", omitList
-        );
+        Map<String, Object> result = new HashMap<>();
+        result.put("downloadPath", downloadPath);
+        result.put("items", items);
+        result.put("omitList", omitList);
+        result.put("rejected", rejected);
+        result.put("orphanRules", orphanRules);
+        return result;
     }
 
     public Map<String, Object> downloadPath(Ani ani) {

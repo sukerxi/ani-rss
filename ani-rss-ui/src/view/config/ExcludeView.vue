@@ -108,14 +108,28 @@ let subgroup = ref('')
 let exclude = ref('')
 
 let addExclude = () => {
-  if (!exclude.value) {
+  const regexText = exclude.value.trim()
+  if (!regexText) {
     ElMessage.error('正则为空')
     return
   }
-  if (subgroup.value) {
-    exclude.value = `{{${subgroup.value}}}:${exclude.value}`
+  // 提交前在浏览器侧先校验，避免非法规则保存后在轮询期静默失效
+  try {
+    // eslint-disable-next-line no-new
+    new RegExp(regexText)
+  } catch (e) {
+    ElMessage.error(`正则表达式不合法: ${e.message}`)
+    return
   }
-  props.exclude.push(exclude.value)
+  const rule = subgroup.value.trim() ? `{{${subgroup.value.trim()}}}:${regexText}` : regexText
+  if (props.exclude.includes(rule)) {
+    ElMessage.warning('该规则已存在')
+    subgroup.value = ''
+    exclude.value = ''
+    add.value = false
+    return
+  }
+  props.exclude.push(rule)
   subgroup.value = ''
   exclude.value = ''
   add.value = false

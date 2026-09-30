@@ -41,7 +41,7 @@ class GroupRegexUtilsTest {
         assertTrue(labels.contains("720P"));
         assertTrue(labels.contains("HEVC"));
         assertTrue(labels.contains("AVC"));
-        // 实际命中的标签保留原始大小写
+        // 标签归一化后保留统一文案
         assertTrue(labels.contains("MKV"));
         assertTrue(labels.contains("MP4"));
     }
@@ -53,7 +53,7 @@ class GroupRegexUtilsTest {
                 "[Sub] Title [05][1080P][Mp4]"
         ), title -> title);
 
-        assertTrue(labels(groupRegex).stream().anyMatch("Mp4"::equalsIgnoreCase));
+        assertTrue(labels(groupRegex).stream().anyMatch("MP4"::equalsIgnoreCase));
         assertTrue(regexes(groupRegex).contains("(?i)mp4"));
     }
 
@@ -71,11 +71,52 @@ class GroupRegexUtilsTest {
     void duplicateTagSetsAreDeduplicated() {
         GroupRegex groupRegex = GroupRegexUtils.toGroupRegx(List.of(
                 "[SubA] Title A [05][1080P][CHT]",
-                "[SubB] Title B [06][1080P][CHT]"
+                "[SubB] Title B [06][1080P][繁]"
         ), title -> title);
 
-        // 两条标题标签组合完全一致，只保留一组
+        // CHT 与 繁 归一为同一标签族，两条标题组合一致，只保留一组且计数为 2
         assertEquals(1, groupRegex.getRegexList().size());
+        assertEquals(1, groupRegex.getCounts().size());
+        assertEquals(2, groupRegex.getCounts().get(0));
+        assertTrue(labels(groupRegex).contains("繁"));
+    }
+
+    @Test
+    void synonymFamiliesAreNormalized() {
+        // 分辨率、语言、编码的不同写法归一为同一组合
+        GroupRegex groupRegex = GroupRegexUtils.toGroupRegx(List.of(
+                "[Sub] Title A [05][1920x1080][H265][CHS]",
+                "[Sub] Title B [06][1080P][HEVC][简]"
+        ), title -> title);
+
+        assertEquals(1, groupRegex.getRegexList().size());
+        List<String> labels = labels(groupRegex);
+        assertTrue(labels.contains("1080P"));
+        assertTrue(labels.contains("HEVC"));
+        assertTrue(labels.contains("简"));
+        assertFalse(labels.contains("CHS"));
+
+        // 生成的族正则为 OR 写法，任一同义词都能命中
+        List<String> regexes = regexes(groupRegex);
+        assertTrue(regexes.contains("(?i)(?:1920[Xx]1080|1080p)"));
+        assertTrue(regexes.contains("(?i)(?:hevc|h\\.?265|x265)"));
+    }
+
+    @Test
+    void combosOrderedByFrequencyAndAlignedWithSamples() {
+        GroupRegex groupRegex = GroupRegexUtils.toGroupRegx(List.of(
+                "[Sub] Common [01][1080P][繁]",
+                "[Sub] Common [02][1080P][繁]",
+                "[Sub] Common [03][1080P][繁]",
+                "[Sub] Rare [01][1080P][简]"
+        ), title -> title);
+
+        assertEquals(2, groupRegex.getRegexList().size());
+        assertEquals(2, groupRegex.getCounts().size());
+        assertEquals(2, groupRegex.getSampleTitles().size());
+        // 命中多的组合排第一
+        assertEquals(3, groupRegex.getCounts().get(0));
+        assertEquals(1, groupRegex.getCounts().get(1));
     }
 
     @Test

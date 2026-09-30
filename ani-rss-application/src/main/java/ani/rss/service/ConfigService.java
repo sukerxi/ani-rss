@@ -2,6 +2,7 @@ package ani.rss.service;
 
 import ani.rss.commons.FileUtils;
 import ani.rss.commons.MavenUtils;
+import ani.rss.commons.RegexRuleUtils;
 import ani.rss.download.BaseDownload;
 import ani.rss.entity.Config;
 import ani.rss.entity.GitInfo;
@@ -63,6 +64,9 @@ public class ConfigService {
     }
 
     public void setConfig(Config newConfig) {
+        // 全局排除规则非法时直接拒绝保存，避免轮询期异常导致过滤整体失效
+        RegexRuleUtils.validateRules(newConfig.getExclude());
+
         Config config = ConfigUtil.CONFIG;
         Login login = config.getLogin();
         String username = login.getUsername();

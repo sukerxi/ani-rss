@@ -9,14 +9,23 @@
       <div class="items-select-container">
         <el-select v-model="selectedFilter" class="items-select" @change="clearSelection">
           <el-option
-              v-for="filter in filters"
+              v-for="filter in filterTabs"
               :key="filter.label"
               :label="filter.label"
-              :value="filter.label"/>
+              :value="filter.value"/>
         </el-select>
         <el-input v-model="previewData.downloadPath" readonly/>
       </div>
-      <div class="items-button-container">
+      <el-alert
+          v-if="orphanRules.length"
+          :closable="false"
+          class="orphan-alert"
+          show-icon
+          title="以下规则引用了不存在的字幕组，永远不会生效（可能是字幕组改名导致），请更新规则或字幕组名称"
+          type="warning">
+        <div v-for="rule in orphanRules" :key="rule" class="orphan-rule">{{ rule }}</div>
+      </el-alert>
+      <div v-if="!isRejectedFilter" class="items-button-container">
         <el-button :disabled="!selectedItems.length" icon="Check" type="primary" @click="allowDownload">允许下载
         </el-button>
         <el-button :disabled="!selectedItems.length" icon="Close" @click="forbidDownload">禁止下载</el-button>
@@ -41,20 +50,20 @@
             size="small"
             stripe
             @selection-change="selectedItems = $event">
-          <el-table-column type="selection" width="55" fixed/>
-          <el-table-column label="是否下载" min-width="100">
+          <el-table-column v-if="!isRejectedFilter" type="selection" width="55" fixed/>
+          <el-table-column v-if="!isRejectedFilter" label="是否下载" min-width="100">
             <template #default="{row}">
               <el-tag v-if="notDownloadEpisodes.has(row.episode)" type="info">否</el-tag>
               <el-tag v-else>是</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="已下载" min-width="100">
+          <el-table-column v-if="!isRejectedFilter" label="已下载" min-width="100">
             <template #default="{row}">
               <el-tag v-if="!row.hasDownloaded" type="info">否</el-tag>
               <el-tag v-else>是</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="主RSS" min-width="80">
+          <el-table-column v-if="!isRejectedFilter" label="主RSS" min-width="80">
             <template #default="{row}">
               <el-tag v-if="!row.master" type="info">否</el-tag>
               <el-tag v-else>是</el-tag>
@@ -74,7 +83,14 @@
               </el-text>
             </template>
           </el-table-column>
-          <el-table-column label="重命名" min-width="280">
+          <el-table-column v-if="isRejectedFilter" label="过滤原因" min-width="240">
+            <template #default="{row}">
+              <el-text size="small" type="warning">
+                {{ row.reason }}
+              </el-text>
+            </template>
+          </el-table-column>
+          <el-table-column v-if="!isRejectedFilter" label="重命名" min-width="280">
             <template #default="{row}">
               <el-text size="small">
                 {{ row.reName }}
@@ -88,22 +104,22 @@
               </el-text>
             </template>
           </el-table-column>
-          <el-table-column label="InfoHash" min-width="200">
+          <el-table-column v-if="!isRejectedFilter" label="InfoHash" min-width="200">
             <template #default="{row}">
               <el-text size="small">
                 {{ row.infoHash }}
               </el-text>
             </template>
           </el-table-column>
-          <el-table-column prop="formatSize" label="大小" width="120"/>
-          <el-table-column label="种子" width="90">
+          <el-table-column v-if="!isRejectedFilter" prop="formatSize" label="大小" width="120"/>
+          <el-table-column v-if="!isRejectedFilter" label="种子" width="90">
             <template #default="{row}">
               <el-button bg size="small" text @click="copyTorrent(row.torrent)">复制</el-button>
             </template>
           </el-table-column>
         </el-table>
         <el-alert
-            v-if="omitAlertTitle"
+            v-if="omitAlertTitle && !isRejectedFilter"
             :closable="false"
             :title="omitAlertTitle"
             show-icon
@@ -132,38 +148,66 @@ const props = defineProps({
 
 const filters = [
   {
+    value: 'all',
     label: '全部',
+    rejected: false,
     predicate: () => true
   },
   {
+    value: 'downloaded',
     label: '已下载',
+    rejected: false,
     predicate: item => item.hasDownloaded
   },
   {
+    value: 'notDownloaded',
     label: '未下载',
+    rejected: false,
     predicate: item => !item.hasDownloaded
+  },
+  {
+    value: 'rejected',
+    label: '已过滤',
+    rejected: true,
+    predicate: () => true
   }
 ]
 
 const createEmptyPreview = () => ({
   downloadPath: '',
   items: [],
-  omitList: []
+  omitList: [],
+  rejected: [],
+  orphanRules: []
 })
 
 const dialogVisible = ref(false)
 const loading = ref(false)
 const deleteLoading = ref(false)
-const selectedFilter = ref(filters[0].label)
+const selectedFilter = ref(filters[0].value)
 const selectedItems = ref([])
 const previewData = ref(createEmptyPreview())
 const tableRef = ref()
 let loadVersion = 0
 
 const activeFilter = computed(() =>
-    filters.find(filter => filter.label === selectedFilter.value) ?? filters[0]
+    filters.find(filter => filter.value === selectedFilter.value) ?? filters[0]
 )
-const visibleItems = computed(() => previewData.value.items.filter(activeFilter.value.predicate))
+const isRejectedFilter = computed(() => activeFilter.value.rejected)
+const visibleItems = computed(() => {
+  const rows = isRejectedFilter.value ? previewData.value.rejected : previewData.value.items
+  return rows.filter(activeFilter.value.predicate)
+})
+// 页签上附带数量，方便一眼看到被过滤条目规模
+const filterTabs = computed(() => filters.map(filter => ({
+  value: filter.value,
+  label: filter.rejected
+      ? `${filter.label} (${previewData.value.rejected.length})`
+      : filter.label === '全部'
+          ? `${filter.label} (${previewData.value.items.length})`
+          : filter.label
+})))
+const orphanRules = computed(() => previewData.value.orphanRules ?? [])
 const selectedDownloadedItems = computed(() => selectedItems.value.filter(item => item.hasDownloaded))
 const notDownloadEpisodes = computed(() => new Set(props.ani.notDownload ?? []))
 const deleteConfirmTitle = computed(() => `删除${selectedDownloadedItems.value.length}个种子缓存?`)
@@ -208,7 +252,7 @@ const clearSelection = () => {
 
 const resetPreview = () => {
   loadVersion++
-  selectedFilter.value = filters[0].label
+  selectedFilter.value = filters[0].value
   previewData.value = createEmptyPreview()
   loading.value = false
   deleteLoading.value = false
@@ -229,7 +273,9 @@ const loadPreview = async () => {
       ...createEmptyPreview(),
       ...data,
       items: data.items ?? [],
-      omitList: data.omitList ?? []
+      omitList: data.omitList ?? [],
+      rejected: data.rejected ?? [],
+      orphanRules: data.orphanRules ?? []
     }
   } finally {
     if (currentVersion === loadVersion) {
@@ -297,6 +343,17 @@ defineExpose({show})
 
 .items-select-container :deep(.el-input) {
   min-width: 0;
+}
+
+.orphan-alert {
+  margin: 4px 0 8px;
+}
+
+.orphan-rule {
+  font-family: var(--el-font-family-mono, monospace);
+  font-size: 12px;
+  line-height: 1.6;
+  word-break: break-all;
 }
 
 .items-button-container {

@@ -5,6 +5,7 @@ import ani.rss.commons.FileUtils;
 import ani.rss.entity.Ani;
 import ani.rss.entity.Config;
 import ani.rss.entity.Item;
+import ani.rss.entity.RejectedItem;
 import ani.rss.entity.StandbyRss;
 import ani.rss.enums.NotificationStatusEnum;
 import ani.rss.enums.StringEnum;
@@ -37,9 +38,20 @@ public class ItemsUtil {
      * @return 视频列表
      */
     public static List<Item> getItems(Ani ani) {
+        return getItems(ani, null);
+    }
+
+    /**
+     * 获取视频列表
+     *
+     * @param ani      订阅
+     * @param rejected 非空时收集被过滤掉的条目及原因（仅预览/排查使用）
+     * @return 视频列表
+     */
+    public static List<Item> getItems(Ani ani, List<RejectedItem> rejected) {
         String url = ani.getUrl();
         String subgroup = StrUtil.blankToDefault(ani.getSubgroup(), "未知字幕组");
-        List<Item> items = new ArrayList<>(ItemsUtil.getItems(ani, url, subgroup)
+        List<Item> items = new ArrayList<>(ItemsUtil.getItems(ani, url, subgroup, rejected)
                 .stream()
                 .peek(item -> item.setMaster(true))
                 .toList());
@@ -55,7 +67,7 @@ public class ItemsUtil {
             subgroup = StrUtil.blankToDefault(rss.getLabel(), "未知字幕组");
             Ani clone = ObjUtil.clone(ani);
             clone.setOffset(rss.getOffset());
-            items.addAll(ItemsUtil.getItems(clone, rss.getUrl(), subgroup)
+            items.addAll(ItemsUtil.getItems(clone, rss.getUrl(), subgroup, rejected)
                     .stream()
                     .peek(item -> item.setMaster(false))
                     .toList());
@@ -80,6 +92,19 @@ public class ItemsUtil {
      * @return 视频列表
      */
     public static List<Item> getItems(Ani ani, String rssUrl, String subgroupName) {
+        return getItems(ani, rssUrl, subgroupName, null);
+    }
+
+    /**
+     * 获取视频列表
+     *
+     * @param ani          订阅
+     * @param rssUrl       RSS链接
+     * @param subgroupName 字幕组名
+     * @param rejected     非空时收集被过滤掉的条目及原因
+     * @return 视频列表
+     */
+    public static List<Item> getItems(Ani ani, String rssUrl, String subgroupName, List<RejectedItem> rejected) {
         String xml = getRss(rssUrl);
 
         List<String> exclude = ani.getExclude();
@@ -190,6 +215,7 @@ public class ItemsUtil {
             }
 
             if (StrUtil.isBlank(torrent)) {
+                reject(rejected, subgroupName, itemTitle, null, "缺少种子/磁力链接");
                 continue;
             }
 
@@ -234,21 +260,48 @@ public class ItemsUtil {
 
             // 排除
             if (!exclude.isEmpty()) {
-                if (exclude.stream().map(map).filter(StrUtil::isNotBlank).anyMatch(s -> ReUtil.contains(s, addNewItem.getTitle()))) {
+                String hitRule = null;
+                for (String rule : exclude) {
+                    String regex = map.apply(rule);
+                    if (StrUtil.isNotBlank(regex) && ReUtil.contains(regex, addNewItem.getTitle())) {
+                        hitRule = rule;
+                        break;
+                    }
+                }
+                if (hitRule != null) {
+                    reject(rejected, subgroupName, addNewItem.getTitle(), pubDate, "排除规则命中: " + hitRule);
                     continue;
                 }
             }
 
             // 匹配
             if (!match.isEmpty()) {
-                if (match.stream().map(map).filter(StrUtil::isNotBlank).anyMatch(s -> !ReUtil.contains(s, addNewItem.getTitle()))) {
+                String missingRule = null;
+                for (String rule : match) {
+                    String regex = map.apply(rule);
+                    if (StrUtil.isNotBlank(regex) && !ReUtil.contains(regex, addNewItem.getTitle())) {
+                        missingRule = rule;
+                        break;
+                    }
+                }
+                if (missingRule != null) {
+                    reject(rejected, subgroupName, addNewItem.getTitle(), pubDate, "匹配规则未命中: " + missingRule);
                     continue;
                 }
             }
 
             // 全局排除
             if (globalExclude) {
-                if (globalExcludeList.stream().map(map).filter(StrUtil::isNotBlank).anyMatch(s -> ReUtil.contains(s, addNewItem.getTitle()))) {
+                String hitRule = null;
+                for (String rule : globalExcludeList) {
+                    String regex = map.apply(rule);
+                    if (StrUtil.isNotBlank(regex) && ReUtil.contains(regex, addNewItem.getTitle())) {
+                        hitRule = rule;
+                        break;
+                    }
+                }
+                if (hitRule != null) {
+                    reject(rejected, subgroupName, addNewItem.getTitle(), pubDate, "全局排除命中: " + hitRule);
                     continue;
                 }
             }
@@ -268,10 +321,14 @@ public class ItemsUtil {
             }
             if (keep) {
                 renameItems.add(item);
-            } else if (!ItemsUtil.is5(item.getEpisode())) {
-                // rename 返回 false 有两种：开启 skip5 跳过 x.5 集（此时集数已解析为 x.5），
-                // 以及集数无法识别（集数仍为初始值 1.0）。这里只统计后者，便于排查漏订阅。
-                unrecognizedTitles.add(item.getTitle());
+            } else {
+                String reason = ItemsUtil.is5(item.getEpisode()) ? "跳过 x.5 集" : "集数无法识别";
+                reject(rejected, subgroupName, item.getTitle(), item.getPubDate(), reason);
+                if (!ItemsUtil.is5(item.getEpisode())) {
+                    // rename 返回 false 有两种：开启 skip5 跳过 x.5 集（此时集数已解析为 x.5），
+                    // 以及集数无法识别（集数仍为初始值 1.0）。这里只统计后者，便于排查漏订阅。
+                    unrecognizedTitles.add(item.getTitle());
+                }
             }
         }
         items = renameItems;
@@ -486,6 +543,56 @@ public class ItemsUtil {
                     CacheUtils.put(key, text, TimeUnit.DAYS.toMillis(1));
                     NotificationUtil.send(CONFIG, ani, text, NotificationStatusEnum.PROCRASTINATING);
                 });
+    }
+
+    private static void reject(List<RejectedItem> rejected, String subgroupName,
+                               String title, Date pubDate, String reason) {
+        if (rejected == null) {
+            return;
+        }
+        rejected.add(new RejectedItem()
+                .setSubgroup(subgroupName)
+                .setTitle(title)
+                .setPubDate(pubDate)
+                .setReason(reason));
+    }
+
+    /**
+     * 找出 match/exclude 中引用了不存在字幕组的规则。
+     * 字幕组改名后这些规则会静默失效（匹配变全下、排除不生效），用于预览告警。
+     *
+     * @param ani 订阅
+     * @return 孤立规则列表
+     */
+    public static List<String> orphanRules(Ani ani) {
+        Set<String> labels = new HashSet<>();
+        if (StrUtil.isNotBlank(ani.getSubgroup())) {
+            labels.add(ani.getSubgroup());
+        }
+        if (ani.getStandbyRssList() != null) {
+            for (StandbyRss rss : ani.getStandbyRssList()) {
+                if (StrUtil.isNotBlank(rss.getLabel())) {
+                    labels.add(rss.getLabel());
+                }
+            }
+        }
+
+        List<String> rules = new ArrayList<>();
+        if (ani.getMatch() != null) {
+            rules.addAll(ani.getMatch());
+        }
+        if (ani.getExclude() != null) {
+            rules.addAll(ani.getExclude());
+        }
+
+        return rules.stream()
+                .filter(StrUtil::isNotBlank)
+                .filter(rule -> {
+                    String label = ReUtil.get(StringEnum.SUBGROUP_REG_STR, rule, 1);
+                    return StrUtil.isNotBlank(label) && !labels.contains(label);
+                })
+                .distinct()
+                .toList();
     }
 
     public static String getSubgroup(List<Item> items) {
