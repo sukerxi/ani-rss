@@ -24,16 +24,12 @@ public class WeekComparator implements Comparator<String>, Serializable {
         List<String> weekList = new ArrayList<>();
         int dayOfWeek = DateUtil.dayOfWeek(new Date()) - 1;
 
-        for (int i = dayOfWeek; i >= 0; i--) {
+        for (int i = dayOfWeek; i < WEEK_ORDER.size(); i++) {
             weekList.add(WEEK_ORDER.get(i));
         }
 
-        for (int i = 6; i > 0; i--) {
-            String s = WEEK_ORDER.get(i);
-            if (weekList.contains(s)) {
-                continue;
-            }
-            weekList.add(s);
+        for (int i = 0; i < dayOfWeek; i++) {
+            weekList.add(WEEK_ORDER.get(i));
         }
         return weekList;
     }
