@@ -32,6 +32,10 @@
     --el-border-radius-round: 24px;
     --app-dialog-border-radius: 16px;
 
+    /* 统一间距节奏：页面边距（24） > 卡片/板块缝隙（12） */
+    --app-page-gutter: 24px;
+    --app-block-gap: 12px;
+
     /* 全局边框淡化 */
     --el-border-color: var(--el-border-color-lighter);
     --el-border-color-light: var(--el-border-color-extra-light);
@@ -465,14 +469,14 @@ html, body, #app {
 }
 
 .app-page-padding {
-    padding-left: 24px;
-    padding-right: 24px;
+    padding-left: var(--app-page-gutter);
+    padding-right: var(--app-page-gutter);
 }
 
 @media (max-width: 800px) {
     .app-page-padding {
-        padding-left: 12px;
-        padding-right: 12px;
+        padding-left: var(--app-block-gap);
+        padding-right: var(--app-block-gap);
     }
 }
 

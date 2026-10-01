@@ -112,7 +112,7 @@ onMounted(() => {
 </script>
 <style scoped>
 .config-page {
-  padding-bottom: 8px;
+  padding-bottom: var(--app-block-gap);
 }
 
 .config-tabs {

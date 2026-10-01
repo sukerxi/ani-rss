@@ -40,8 +40,8 @@
                    :show-after="300">
           <el-button class="app-nav-action" circle bg text @click="collapsed = !collapsed">
             <el-icon>
-              <Expand v-if="collapsed"/>
-              <Fold v-else/>
+              <DArrowRight v-if="collapsed"/>
+              <DArrowLeft v-else/>
             </el-icon>
           </el-button>
         </el-tooltip>
@@ -63,9 +63,9 @@ import {RouterView, useRoute, useRouter} from "vue-router";
 import {useDark, useLocalStorage} from "@vueuse/core";
 import {
   Collection,
+  DArrowLeft,
+  DArrowRight,
   Download,
-  Expand,
-  Fold,
   House,
   Moon,
   Setting,
@@ -240,9 +240,11 @@ onMounted(() => {
   border-top: 1px solid var(--app-nav-border);
 }
 
-.app-nav-action {
+.app-nav-footer .app-nav-action {
   width: 34px;
   height: 34px;
+  /* 压住 EP .el-button + .el-button 的 margin-left，避免折叠态第二按钮被顶偏、展开态与 gap 叠加 */
+  margin: 0;
   font-size: 16px;
 }
 
@@ -262,6 +264,11 @@ onMounted(() => {
   justify-content: center;
   margin: 3px 10px;
   padding: 0 !important;
+}
+
+/* EP 菜单图标默认带 margin-right，折叠态无文字时会把图标顶偏左，需清零对齐中线 */
+.is-nav-collapsed .app-menu :deep(.el-menu-item .el-icon) {
+  margin: 0;
 }
 
 .is-nav-collapsed .app-nav-footer {

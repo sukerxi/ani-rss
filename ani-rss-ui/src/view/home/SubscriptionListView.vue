@@ -175,7 +175,7 @@ defineExpose({
 <style scoped>
 .grid-container {
   display: grid;
-  grid-gap: 8px;
+  grid-gap: var(--app-block-gap);
   width: 100%;
 }
 
@@ -196,12 +196,12 @@ defineExpose({
 }
 
 .list-week-title {
-  margin-top: 12px;
+  margin-top: var(--app-block-gap);
   margin-bottom: 4px;
 }
 
 .list-bottom-spacer {
-  height: 8px;
+  height: var(--app-block-gap);
 }
 
 .card-grid-container {
@@ -210,7 +210,7 @@ defineExpose({
 
 .cover-grid-container {
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  grid-gap: 24px;
+  grid-gap: var(--app-block-gap);
 }
 
 @media (max-width: 800px) {
@@ -220,7 +220,7 @@ defineExpose({
 
   .cover-grid-container {
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    grid-gap: 12px;
+    grid-gap: var(--app-block-gap);
   }
 }
 </style>

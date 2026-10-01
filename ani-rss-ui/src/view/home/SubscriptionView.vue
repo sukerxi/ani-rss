@@ -176,7 +176,7 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding-bottom: 10px;
+  padding-bottom: var(--app-block-gap);
 }
 
 .subscription-filters,
@@ -241,7 +241,7 @@ onMounted(() => {
 
 @media (max-width: 560px) {
   .subscription-toolbar {
-    padding-bottom: 8px;
+    padding-bottom: var(--app-block-gap);
   }
 
   .subscription-actions {

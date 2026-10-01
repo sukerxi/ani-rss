@@ -232,7 +232,7 @@ onUnmounted(pausePolling)
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 0 4px 10px;
+  padding: 0 4px var(--app-block-gap);
   flex-shrink: 0;
 }
 
@@ -297,7 +297,7 @@ onUnmounted(pausePolling)
 }
 
 .torrents-card {
-  margin-bottom: 8px;
+  margin-bottom: var(--app-block-gap);
 }
 
 .torrents-name {
@@ -356,7 +356,7 @@ onUnmounted(pausePolling)
   .torrents-toolbar {
     align-items: flex-end;
     gap: 6px;
-    padding: 0 0 8px;
+    padding: 0 0 var(--app-block-gap);
   }
 
   .torrents-tabs :deep(.el-tabs__item) {

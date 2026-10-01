@@ -221,7 +221,7 @@ onActivated(getLogs)
 
 <style scoped>
 .logs-page {
-  padding-bottom: 8px;
+  padding-bottom: var(--app-block-gap);
 }
 
 .log-actions {
@@ -241,7 +241,7 @@ onActivated(getLogs)
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: var(--app-block-gap);
 }
 
 .log-search {

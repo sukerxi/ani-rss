@@ -33,8 +33,8 @@ defineProps({
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 24px;
-  margin-bottom: 8px;
+  margin-top: var(--app-page-gutter);
+  margin-bottom: var(--app-block-gap);
 }
 
 .page-header-heading {

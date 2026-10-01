@@ -317,7 +317,7 @@ onUnmounted(stopPolling)
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  gap: var(--app-block-gap);
 }
 
 .metric-item {
@@ -325,7 +325,7 @@ onUnmounted(stopPolling)
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px;
+  padding: var(--app-block-gap);
   border: 1px solid var(--app-card-border);
   border-radius: 12px;
   background-color: var(--el-bg-color);
@@ -392,13 +392,13 @@ onUnmounted(stopPolling)
 .dashboard-content {
   display: grid;
   grid-template-columns: minmax(280px, 0.9fr) minmax(320px, 1.1fr);
-  gap: 14px;
-  padding-bottom: 8px;
+  gap: var(--app-block-gap);
+  padding-bottom: var(--app-block-gap);
 }
 
 .dashboard-section {
   min-width: 0;
-  padding: 14px;
+  padding: var(--app-block-gap);
   border: 1px solid var(--app-card-border);
   border-radius: 12px;
   background-color: var(--el-bg-color);
@@ -444,7 +444,7 @@ onUnmounted(stopPolling)
 .today-track {
   min-width: 0;
   display: flex;
-  gap: 10px;
+  gap: var(--app-block-gap);
   overflow-x: auto;
   overflow-y: hidden;
   padding: 2px 2px 8px;
