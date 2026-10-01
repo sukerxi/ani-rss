@@ -1,164 +1,76 @@
 package ani.rss.service;
 
-import ani.rss.cache.HttpResponseCache;
-import ani.rss.commons.FileUtils;
-import ani.rss.commons.GroupRegexUtils;
-import ani.rss.commons.GsonStatic;
-import ani.rss.comparator.WeekComparator;
-import ani.rss.entity.Ani;
 import ani.rss.entity.AniBT;
-import ani.rss.entity.GroupRegex;
 import ani.rss.entity.dto.AniBTQueryDTO;
-import ani.rss.util.basic.HttpReq;
-import ani.rss.util.other.AniUtil;
-import ani.rss.util.other.BgmUtil;
-import cn.hutool.core.collection.CollUtil;
-import cn.hutool.core.util.ObjectUtil;
-import cn.hutool.core.util.StrUtil;
-import cn.hutool.crypto.SecureUtil;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
+import ani.rss.service.source.BangumiRef;
+import ani.rss.service.source.SourceGroup;
+import ani.rss.service.source.SourceListResult;
+import ani.rss.service.source.SourceQuery;
+import ani.rss.service.source.SourceResource;
+import ani.rss.service.source.SourceWeek;
+import ani.rss.service.source.anibt.AniBTSource;
+import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
-import java.util.Comparator;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
+/**
+ * AniBT 订阅 facade：保持 Controller / MCP 既有签名，
+ * 抓取与富化委托 {@link AniBTSource}，统一模型在此映射回 AniBT 实体。
+ */
 @Service
 public class AniBTService {
-    private static final String HOST = "https://anibt.net";
 
-    /**
-     * 季番列表 fresh 60s, stale 10min (对齐源站 s-maxage=300, stale-while-revalidate=300)
-     */
-    private static final Duration LIST_FRESH_TTL = Duration.ofSeconds(60);
-    private static final Duration LIST_STALE_TTL = Duration.ofMinutes(10);
+    @Resource
+    private AniBTSource aniBTSource;
 
     public AniBT list(AniBTQueryDTO dto) {
-        String title = dto.getTitle();
+        SourceQuery query = new SourceQuery()
+                .setText(dto.getTitle())
+                .setBgmUrl(dto.getBgmUrl())
+                .setSeason(dto.getSeason())
+                .setRefresh(Boolean.TRUE.equals(dto.getRefresh()));
 
-        Set<String> subscribedBgmIds = AniUtil.getSubscribedBgmIds();
+        SourceListResult result = aniBTSource.list(query);
 
-        String bgmUrl = dto.getBgmUrl();
-        String seasonInput = dto.getSeason();
+        AniBT raw = (AniBT) result.getRaw();
+        raw.setRequestedSeason(result.getRequestedSeason());
 
-        // 一次性计算, 保证 season 和 bgmId 都是 effectively final
-        final String season;
-        final String bgmId;
-        if (StrUtil.isNotBlank(title)) {
-            season = "";
-            bgmId = "";
-        } else if (StrUtil.isNotBlank(bgmUrl)) {
-            season = seasonInput;
-            bgmId = BgmUtil.getSubjectId(bgmUrl);
-        } else {
-            season = seasonInput;
-            bgmId = "";
+        List<AniBT.ByWeekday> byWeekday = new ArrayList<>();
+        for (SourceWeek week : result.getWeeks()) {
+            AniBT.ByWeekday rawWeek = (AniBT.ByWeekday) week.getRaw();
+
+            List<AniBT.Anime> animes = new ArrayList<>();
+            for (var anime : week.getItems()) {
+                AniBT.Anime rawAnime = (AniBT.Anime) anime.getRaw();
+                rawAnime.setScore(anime.getScore())
+                        .setExists(anime.getExists());
+                animes.add(rawAnime);
+            }
+            rawWeek.setAnimes(animes);
+            byWeekday.add(rawWeek);
         }
-
-        boolean force = Boolean.TRUE.equals(dto.getRefresh());
-        String query = StrUtil.blankToDefault(title, "");
-        String body;
-        if (StrUtil.isNotBlank(title)) {
-            // 搜索请求不缓存, 始终实时
-            body = HttpReq.get(HOST + "/api/seasons/anime")
-                    .form("season", season)
-                    .form("bgmId", bgmId)
-                    .form("query", query)
-                    .thenFunction(res -> {
-                        HttpReq.assertStatus(res);
-                        return res.body();
-                    });
-        } else {
-            String cacheKey = "http:anibt:seasons:" + SecureUtil.md5(season + "|" + bgmId);
-            body = HttpResponseCache.get(cacheKey,
-                    () -> HttpReq.get(HOST + "/api/seasons/anime")
-                            .form("season", season)
-                            .form("bgmId", bgmId)
-                            .form("query", ""),
-                    LIST_FRESH_TTL, LIST_STALE_TTL, force);
-        }
-
-        JsonObject jsonObject = GsonStatic.fromJson(body, JsonObject.class);
-        JsonObject data = jsonObject.getAsJsonObject("data");
-        AniBT aniBT = GsonStatic.fromJson(data, AniBT.class);
-
-        List<AniBT.ByWeekday> byWeekday = aniBT.getByWeekday();
-
-        // 统一从 bgm.tv 获取全部番剧评分 (唯一口径), 热路径命中本地缓存
-        List<String> allBgmIds = byWeekday.stream()
-                .map(AniBT.ByWeekday::getAnimes)
-                .flatMap(List::stream)
-                .map(AniBT.Anime::getBgmId)
-                .toList();
-        Map<String, Double> scoreMap = BgmUtil.getScores(allBgmIds);
-
-        for (AniBT.ByWeekday weekday : byWeekday) {
-            List<AniBT.Anime> animeList = weekday.getAnimes();
-            animeList = animeList.stream()
-                    .filter(anime -> {
-                        if (StrUtil.isBlank(title)) {
-                            return anime.getRssReleaseCount() > 0;
-                        }
-                        return true;
-                    })
-                    .peek(anime -> {
-                        String bgmIdOfAnime = anime.getBgmId();
-                        Double bgmScore = scoreMap.get(bgmIdOfAnime);
-                        // BGM 评分未就绪时先用 AniBT 源站评分临时展示, 后续由 BGM 缓存校准
-                        double score = (bgmScore != null && bgmScore > 0)
-                                ? bgmScore
-                                : ObjectUtil.defaultIfNull(anime.getRating(), 0.0);
-                        anime.setScore(score)
-                                .setExists(subscribedBgmIds.contains(bgmIdOfAnime));
-                    })
-                    .sorted(Comparator.comparingDouble(AniBT.Anime::getScore).reversed())
-                    .toList();
-            weekday.setAnimes(animeList);
-        }
-
-        WeekComparator weekComparator = new WeekComparator();
-        byWeekday = byWeekday.stream()
-                .filter(weekday -> CollUtil.isNotEmpty(weekday.getAnimes()))
-                .sorted((a, b) ->
-                        weekComparator.compare(a.getWeekdayLabel(), b.getWeekdayLabel())
-                )
-                .toList();
-        aniBT.setByWeekday(byWeekday);
-
-        return aniBT;
+        raw.setByWeekday(byWeekday);
+        return raw;
     }
 
     public List<AniBT.Group> getGroups(String bgmId) {
-        return HttpReq.get(HOST + "/api/anime/groups")
-                .form("bgmId", bgmId)
-                .thenFunction(res -> {
-                    HttpReq.assertStatus(res);
-                    JsonObject jsonObject = GsonStatic.fromJson(res.body(), JsonObject.class);
-                    JsonArray groups = jsonObject.getAsJsonObject("data")
-                            .getAsJsonArray("groups");
-                    List<AniBT.Group> groupList = GsonStatic.fromJsonList(groups, AniBT.Group.class);
-                    for (AniBT.Group group : groupList) {
-                        String slug = group.getSlug();
-                        String rss = "https://anibt.net/rss/anime.xml?bgmId={}&groupSlug={}";
-                        rss = StrUtil.format(rss, bgmId, slug);
-                        group.setRss(rss);
+        return aniBTSource.groups(new BangumiRef().setBgmId(bgmId)).stream()
+                .map(AniBTService::toRawGroup)
+                .toList();
+    }
 
-                        List<AniBT.Item> items = group.getItems();
-                        GroupRegex groupRegx = GroupRegexUtils.toGroupRegx(items, AniBT.Item::getTitle);
+    private static AniBT.Group toRawGroup(SourceGroup group) {
+        AniBT.Group raw = (AniBT.Group) group.getRaw();
+        raw.setGroupRegex(group.getGroupRegex());
 
-                        for (AniBT.Item item : items) {
-                            Long size = item.getSize();
-                            String formatSize = FileUtils.formatSize(size, true);
-                            item.setFormatSize(formatSize);
-                        }
-
-                        group.setBgmId(bgmId)
-                                .setGroupRegex(groupRegx);
-                    }
-                    return groupList;
-                });
+        for (SourceResource resource : group.getItems()) {
+            AniBT.Item rawItem = (AniBT.Item) resource.getRaw();
+            if (resource.getFormatSize() != null) {
+                rawItem.setFormatSize(resource.getFormatSize());
+            }
+        }
+        return raw;
     }
 }

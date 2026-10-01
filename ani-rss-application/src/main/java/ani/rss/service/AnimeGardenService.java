@@ -1,201 +1,77 @@
 package ani.rss.service;
 
-import ani.rss.cache.HttpResponseCache;
-import ani.rss.commons.FileUtils;
-import ani.rss.commons.GroupRegexUtils;
-import ani.rss.commons.GsonStatic;
-import ani.rss.comparator.WeekComparator;
 import ani.rss.entity.AnimeGarden;
-import ani.rss.entity.BgmInfo;
-import ani.rss.entity.GroupRegex;
-import ani.rss.util.basic.HttpReq;
-import ani.rss.util.other.AniUtil;
-import ani.rss.util.other.BgmUtil;
-import cn.hutool.core.collection.CollUtil;
-import cn.hutool.core.date.DateUtil;
-import cn.hutool.core.util.StrUtil;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
+import ani.rss.service.source.BangumiRef;
+import ani.rss.service.source.SourceGroup;
+import ani.rss.service.source.SourceListResult;
+import ani.rss.service.source.SourceQuery;
+import ani.rss.service.source.SourceResource;
+import ani.rss.service.source.SourceWeek;
+import ani.rss.service.source.animegarden.AnimeGardenSource;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.List;
 
+/**
+ * AnimeGarden 订阅 facade：保持 Controller / MCP 既有签名，
+ * 抓取与富化委托 {@link AnimeGardenSource}，统一模型在此映射回 AnimeGarden 实体。
+ */
 @Service
 public class AnimeGardenService {
-    private static final String HOST = "https://api.animes.garden";
-
-    /**
-     * /subjects 源站 max-age=86400; 本地 fresh 5min, stale 24h
-     */
-    private static final Duration SUBJECTS_FRESH_TTL = Duration.ofMinutes(5);
-    private static final Duration SUBJECTS_STALE_TTL = Duration.ofHours(24);
 
     @Resource
-    private CacheService cacheService;
+    private AnimeGardenSource animeGardenSource;
 
     public List<AnimeGarden.Week> list(String bgmUrl) {
         return list(bgmUrl, false);
     }
 
     public List<AnimeGarden.Week> list(String bgmUrl, boolean refresh) {
-        List<AnimeGarden.Week> weekList = new ArrayList<>();
+        SourceQuery query = new SourceQuery()
+                .setBgmUrl(bgmUrl)
+                .setRefresh(refresh);
 
-        if (StrUtil.isNotBlank(bgmUrl)) {
-            AnimeGarden.Week week = new AnimeGarden.Week();
-            weekList.add(week);
+        SourceListResult result = animeGardenSource.list(query);
 
-            String bgmId = BgmUtil.getSubjectId(bgmUrl);
-            BgmInfo bgmInfo = BgmUtil.getBgmInfo(bgmId);
-            String name = BgmUtil.getFinalName(bgmInfo);
-            BgmInfo.Images images = bgmInfo.getImages();
-            Double score = Optional.ofNullable(bgmInfo.getRating())
-                    .map(BgmInfo.Rating::getScore)
-                    .orElse(0.0);
+        List<AnimeGarden.Week> weeks = new ArrayList<>();
+        for (SourceWeek week : result.getWeeks()) {
+            AnimeGarden.Week rawWeek = (AnimeGarden.Week) week.getRaw();
 
-            AnimeGarden.Subject subject = new AnimeGarden.Subject();
-            subject.setName(name)
-                    .setId(bgmId)
-                    .setCover(images.getSmall())
-                    .setScore(score)
-                    .setExists(true);
-
-            week.setWeekLabel("搜索")
-                    .setSubjects(List.of(subject));
-            return weekList;
-        }
-
-        Set<String> subscribedBgmIds = AniUtil.getSubscribedBgmIds();
-
-        JsonObject bgmCover = cacheService.getBgmCover();
-
-        String subjectsBody = HttpResponseCache.get("http:animesgarden:subjects",
-                () -> HttpReq.get(HOST + "/subjects"),
-                SUBJECTS_FRESH_TTL, SUBJECTS_STALE_TTL, refresh);
-        JsonObject subjectsJson = GsonStatic.fromJson(subjectsBody, JsonObject.class);
-        JsonArray subjects = subjectsJson.getAsJsonArray("subjects");
-        List<AnimeGarden.Subject> subjectList = GsonStatic.fromJsonList(subjects, AnimeGarden.Subject.class);
-
-        // 统一从 bgm.tv 获取评分 (唯一口径)
-        Map<String, Double> scoreMap = BgmUtil.getScores(
-                subjectList.stream().map(AnimeGarden.Subject::getId).toList()
-        );
-
-        subjectList = subjectList.stream()
-                .peek(subject -> {
-                    String id = subject.getId();
-
-                    String cover = Optional.ofNullable(bgmCover.get(id))
-                            .map(it -> GsonStatic.fromJson(it, BgmInfo.Images.class))
-                            .map(BgmInfo.Images::getSmall)
-                            .orElse("");
-
-                    subject
-                            .setScore(scoreMap.getOrDefault(id, 0.0))
-                            .setCover(cover)
-                            .setExists(subscribedBgmIds.contains(id));
-                })
-                .sorted(Comparator.comparingDouble(AnimeGarden.Subject::getScore).reversed())
-                .toList();
-
-        List<String> weeks = List.of("星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六");
-
-        Map<String, List<AnimeGarden.Subject>> map = subjectList.stream()
-                .peek(subject -> {
-                    Date activedAt = subject.getActivedAt();
-                    int i = DateUtil.dayOfWeek(activedAt) - 1;
-                    String weekLabel = weeks.get(i);
-                    subject.setWeekLabel(weekLabel);
-                })
-                .collect(Collectors.groupingBy(AnimeGarden.Subject::getWeekLabel));
-
-        for (String weekLabel : weeks) {
-            if (!map.containsKey(weekLabel)) {
-                continue;
+            List<AnimeGarden.Subject> subjects = new ArrayList<>();
+            for (var anime : week.getItems()) {
+                AnimeGarden.Subject raw = (AnimeGarden.Subject) anime.getRaw();
+                if (anime.getScore() != null) {
+                    raw.setScore(anime.getScore());
+                }
+                if (anime.getExists() != null) {
+                    raw.setExists(anime.getExists());
+                }
+                subjects.add(raw);
             }
-
-            AnimeGarden.Week week = new AnimeGarden.Week();
-            week.setWeekLabel(weekLabel)
-                    .setSubjects(map.get(weekLabel));
-            weekList.add(week);
+            rawWeek.setSubjects(subjects);
+            weeks.add(rawWeek);
         }
-
-        WeekComparator weekComparator = new WeekComparator();
-        weekList = weekList.stream()
-                .sorted((a, b) ->
-                        weekComparator.compare(a.getWeekLabel(), b.getWeekLabel())
-                ).toList();
-
-        return weekList;
+        return weeks;
     }
 
     public List<AnimeGarden.Group> group(String bgmId) {
-        List<AnimeGarden.Item> items = HttpReq.get(HOST + "/resources")
-                .form("subject", bgmId)
-                .form("pageSize", 200)
-                .form("duplicate", false)
-                .thenFunction(res -> {
-                    HttpReq.assertStatus(res);
-                    JsonObject jsonObject = GsonStatic.fromJson(res.body(), JsonObject.class);
-                    JsonArray resources = jsonObject.getAsJsonArray("resources");
-                    return GsonStatic.fromJsonList(resources, AnimeGarden.Item.class);
-                });
-
-        items = items
-                .stream()
-                .filter(it -> {
-                    AnimeGarden.Fansub fansub = it.getFansub();
-                    return Objects.nonNull(fansub);
-                })
-                .peek(it -> {
-                    Long size = it.getSize();
-                    String formatSize = FileUtils.formatSize(size, true);
-                    it.setFormatSize(formatSize);
-                })
+        return animeGardenSource.groups(new BangumiRef().setBgmId(bgmId)).stream()
+                .map(AnimeGardenService::toRawGroup)
                 .toList();
+    }
 
+    private static AnimeGarden.Group toRawGroup(SourceGroup group) {
+        AnimeGarden.Group raw = (AnimeGarden.Group) group.getRaw();
+        raw.setGroupRegex(group.getGroupRegex());
 
-        Map<String, List<AnimeGarden.Item>> groupIdMap = items.stream()
-                .collect(Collectors.groupingBy(it -> it.getFansub().getId()));
-
-        List<AnimeGarden.Group> list = items
-                .stream()
-                .map(it -> {
-                    AnimeGarden.Fansub fansub = it.getFansub();
-                    String id = fansub.getId();
-                    String name = fansub.getName();
-                    Date createdAt = it.getCreatedAt();
-
-                    String rss = StrUtil.format(
-                            "{}/feed.xml?subject={}&fansub={}",
-                            HOST,
-                            bgmId,
-                            name.replace("&", "%26")
-                    );
-
-                    return new AnimeGarden.Group()
-                            .setId(id)
-                            .setName(name)
-                            .setLastUpdatedAt(createdAt)
-                            .setRss(rss)
-                            .setBgmId(bgmId);
-                })
-                .sorted(Comparator.comparing(AnimeGarden.Group::getLastUpdatedAt).reversed())
-                .toList();
-
-        list = CollUtil.distinct(list, AnimeGarden.Group::getId, false);
-
-        for (AnimeGarden.Group group : list) {
-            String id = group.getId();
-            List<AnimeGarden.Item> itemList = groupIdMap.get(id);
-            GroupRegex groupRegx = GroupRegexUtils.toGroupRegx(itemList, AnimeGarden.Item::getTitle);
-
-            group.setItems(itemList)
-                    .setGroupRegex(groupRegx);
+        for (SourceResource resource : group.getItems()) {
+            AnimeGarden.Item rawItem = (AnimeGarden.Item) resource.getRaw();
+            if (resource.getFormatSize() != null) {
+                rawItem.setFormatSize(resource.getFormatSize());
+            }
         }
-
-        return list;
+        return raw;
     }
 }

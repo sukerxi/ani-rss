@@ -1,46 +1,42 @@
 package ani.rss.service;
 
-import ani.rss.cache.CacheUtils;
-import ani.rss.commons.GroupRegexUtils;
-import ani.rss.comparator.WeekComparator;
-import ani.rss.entity.*;
-import ani.rss.util.basic.HttpReq;
+import ani.rss.entity.Ani;
+import ani.rss.entity.Mikan;
+import ani.rss.entity.MikanInfo;
+import ani.rss.service.source.BangumiRef;
+import ani.rss.service.source.SourceAnime;
+import ani.rss.service.source.SourceListResult;
+import ani.rss.service.source.SourceQuery;
+import ani.rss.service.source.SourceSeason;
+import ani.rss.service.source.SourceWeek;
+import ani.rss.service.source.mikan.MikanParser;
+import ani.rss.service.source.mikan.MikanSource;
 import ani.rss.util.other.AniUtil;
-import ani.rss.util.other.BgmUtil;
-import ani.rss.util.other.ConfigUtil;
-import cn.hutool.core.collection.ListUtil;
-import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.lang.Assert;
-import cn.hutool.core.util.ReUtil;
 import cn.hutool.core.util.StrUtil;
-import cn.hutool.core.util.URLUtil;
 import cn.hutool.http.HttpUtil;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
 import org.springframework.stereotype.Service;
 
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
-import java.util.stream.Collectors;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
+/**
+ * Mikan 订阅 facade：保持 Controller / MCP / 静态回填的既有签名，
+ * 抓取与富化委托 {@link MikanSource}，统一模型在此映射回 Mikan 实体。
+ */
 @Slf4j
 @Service
 public class MikanService {
 
+    @Resource
+    private MikanSource mikanSource;
+
     public static String getMikanHost() {
-        Config config = ConfigUtil.CONFIG;
-        String mikanHost = config.getMikanHost();
-        mikanHost = StrUtil.blankToDefault(mikanHost, "https://mikanani.me");
-        return mikanHost;
+        return MikanParser.getHost();
     }
 
     /**
@@ -51,204 +47,12 @@ public class MikanService {
      * @return Mikan
      */
     public Mikan list(String text, Mikan.Season season) {
-        Mikan mikan = search(text, season);
-
-        List<Mikan.Week> weeks = mikan.getWeeks();
-
-        // 与其它订阅源保持一致：从今天起按星期升序（三、四、五、六、日、一、二）
-        WeekComparator weekComparator = new WeekComparator();
-        weeks.sort(Comparator.comparing(Mikan.Week::getWeekLabel, weekComparator));
-
-        List<MikanInfo> items = weeks.stream()
-                .map(Mikan.Week::getItems)
-                .flatMap(Collection::stream)
-                .toList();
-
-        // 1. 并行解析每部番剧对应的 bgm.tv id (抓取/缓存)
-        try (ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor()) {
-            List<CompletableFuture<Void>> futures = items.stream()
-                    .map(mikanInfo -> CompletableFuture.runAsync(() -> {
-                        try {
-                            String bgmId = mikanInfo.getBgmId();
-                            if (StrUtil.isBlank(bgmId)) {
-                                String bgmUrl = mikanInfo.getBgmUrl();
-                                if (StrUtil.isNotBlank(bgmUrl)) {
-                                    bgmId = BgmUtil.getSubjectId(bgmUrl);
-                                } else {
-                                    String mikanId = ReUtil.get("\\d+(/)?$", mikanInfo.getUrl(), 0);
-                                    bgmId = BgmUtil.getSubjectIdByMikanId(mikanId);
-                                }
-                            }
-                            mikanInfo.setBgmId(bgmId);
-                        } catch (Exception e) {
-                            log.error(e.getMessage(), e);
-                        }
-                    }, executorService))
-                    .toList();
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-        }
-
-        // 2. 统一从 bgm.tv 获取评分 (唯一口径)
-        List<String> bgmIds = items.stream()
-                .map(MikanInfo::getBgmId)
-                .filter(StrUtil::isNotBlank)
-                .toList();
-        Map<String, Double> scoreMap = BgmUtil.getScores(bgmIds);
-
-        Set<String> subscribedBgmIds = AniUtil.getSubscribedBgmIds();
-
-        // 3. 写入评分与订阅状态, 按评分倒序
-        for (Mikan.Week week : weeks) {
-            List<MikanInfo> mikanInfos = week.getItems();
-            mikanInfos.forEach(mikanInfo -> {
-                String bgmId = StrUtil.blankToDefault(mikanInfo.getBgmId(), "");
-                mikanInfo.setScore(scoreMap.getOrDefault(bgmId, 0.0));
-                mikanInfo.setExists(Boolean.TRUE.equals(mikanInfo.getExists())
-                        || subscribedBgmIds.contains(bgmId));
-            });
-            ListUtil.sort(mikanInfos, Comparator.comparingDouble(MikanInfo::getScore).reversed());
-        }
-
-        return mikan;
+        return toMikan(mikanSource.list(toQuery(text, season)));
     }
 
     public Mikan search(String text, Mikan.Season season) {
-        Set<String> bangumiIdSet = AniUtil.ANI_LIST.stream()
-                .map(AniUtil::getBangumiId)
-                .filter(StrUtil::isNotBlank)
-                .collect(Collectors.toSet());
-
-        Mikan mikan = new Mikan();
-        List<Mikan.Week> weeks = new ArrayList<>();
-        List<Mikan.Season> seasons = new ArrayList<>();
-
-        String regex = "^id: (\\d+)$";
-
-        if (ReUtil.contains(regex, text)) {
-            String mikanId = ReUtil.get(regex, text, 1);
-
-            MikanInfo mikanInfo = getMikanInfo(mikanId);
-
-            weeks.add(
-                    new Mikan.Week()
-                            .setWeekLabel("Search")
-                            .setItems(Collections.singletonList(mikanInfo))
-            );
-
-            return mikan
-                    .setTotalItem(1)
-                    .setWeeks(weeks)
-                    .setSeasons(seasons);
-        }
-
-        String url = getMikanHost();
-        if (StrUtil.isNotBlank(text)) {
-            url = url + "/Home/Search?searchstr=" + URLUtil.encodeBlank(text);
-        } else {
-            Integer year = season.getYear();
-            String seasonStr = season.getSeason();
-            if (Objects.nonNull(year) && StrUtil.isNotBlank(seasonStr)) {
-                url = StrUtil.format(
-                        "{}/Home/BangumiCoverFlowByDayOfWeek?year={}&seasonStr={}",
-                        url, year, seasonStr
-                );
-            }
-        }
-
-        HttpReq.get(url)
-                .then(res -> {
-                    Document document = Jsoup.parse(res.body());
-                    Elements dateSelects = document.select(".date-select");
-                    if (!dateSelects.isEmpty()) {
-                        Element dateSelect = dateSelects.get(0);
-                        String dateText = dateSelects.get(0).select(".date-text").text().trim();
-                        Element dropdownMenu = dateSelect.selectFirst(".dropdown-menu");
-                        for (Element child : dropdownMenu.children()) {
-                            Elements seasonItems = child.select("li");
-                            for (Element seasonItem : seasonItems.subList(1, seasonItems.size())) {
-                                Element a = seasonItem.selectFirst("a");
-                                String dataYear = a.attr("data-year");
-                                String dataSeason = a.attr("data-season");
-                                String selectLabel = StrUtil.format("{} {}", dataYear, dataSeason);
-                                seasons.add(
-                                        new Mikan.Season()
-                                                .setYear(Integer.parseInt(dataYear))
-                                                .setSeason(dataSeason)
-                                                .setSeasonLabel(selectLabel)
-                                                .setSelect(dateText.startsWith(selectLabel))
-                                );
-                            }
-                        }
-                    }
-
-                    Function<Element, List<MikanInfo>> get = (el) -> {
-                        List<MikanInfo> mikanInfos = new ArrayList<>();
-                        if (Objects.isNull(el)) {
-                            return mikanInfos;
-                        }
-                        Elements lis = el.select("li");
-                        for (Element li : lis) {
-                            String img = getMikanHost() + li.selectFirst("span")
-                                    .attr("data-src");
-                            Elements aa = li.select("a");
-                            if (aa.isEmpty()) {
-                                continue;
-                            }
-                            String href = getMikanHost() + aa.get(0).attr("href");
-                            String title = aa.get(0).text();
-
-                            String id = ReUtil.get("\\d+(/)?$", href, 0);
-                            id = StrUtil.blankToDefault(id, "");
-                            mikanInfos.add(
-                                    new MikanInfo()
-                                            .setCover(img)
-                                            .setTitle(title)
-                                            .setUrl(href)
-                                            .setExists(bangumiIdSet.contains(id))
-                                            .setScore(0.0)
-                            );
-                        }
-                        return mikanInfos;
-                    };
-
-                    Elements skBangumis = document.select(".sk-bangumi");
-
-                    if (skBangumis.isEmpty()) {
-                        List<MikanInfo> mikanInfos = get.apply(document.selectFirst(".an-ul"));
-
-                        Mikan.Week item = new Mikan.Week();
-                        item.setItems(mikanInfos)
-                                .setWeekLabel("Search");
-
-                        weeks.add(item);
-                    } else {
-                        for (Element skBangumi : skBangumis) {
-                            List<MikanInfo> mikanInfos = get.apply(skBangumi);
-                            if (mikanInfos.isEmpty()) {
-                                // 番剧为空
-                                continue;
-                            }
-
-                            // 星期
-                            String label = skBangumi.children().get(0).text().trim();
-
-                            Mikan.Week week = new Mikan.Week();
-                            week.setWeekLabel(label)
-                                    .setItems(mikanInfos);
-                            weeks.add(week);
-                        }
-                    }
-                });
-
-        int totalItems = weeks
-                .stream()
-                .mapToInt(it -> it.getItems().size())
-                .sum();
-
-        return mikan
-                .setWeeks(weeks)
-                .setTotalItem(totalItems)
-                .setSeasons(seasons);
+        // 原始结果：未经评分/订阅态/星期排序富化
+        return toMikan(mikanSource.fetchList(toQuery(text, season)));
     }
 
     /**
@@ -258,155 +62,17 @@ public class MikanService {
      * @return 字幕组列表
      */
     public List<Mikan.Group> getGroups(String url) {
-        String cacheKey = "mikan:groups:" + url;
-        List<Mikan.Group> cached = CacheUtils.get(cacheKey);
-        if (cached != null) {
-            return cached;
-        }
-
-        List<Mikan.Group> groupList = HttpReq.get(url)
-                .thenFunction(res -> parseBangumiGroups(Jsoup.parse(res.body())));
-
-        for (Mikan.Group group : groupList) {
-            GroupRegex groupRegx = GroupRegexUtils.toGroupRegx(group.getItems(), Mikan.Item::getTitle);
-            group.setGroupRegex(groupRegx);
-        }
-
-        // 字幕组页体量较大，短缓存避免展开/添加时短时间重复抓取
-        CacheUtils.put(cacheKey, groupList, TimeUnit.MINUTES.toMillis(1));
-        return groupList;
-    }
-
-    /**
-     * 解析番剧详情页上的全部字幕组，{@link #getGroups(String)} 与
-     * {@link #getMikanInfo(String)} 共用，避免两处解析逻辑分叉
-     */
-    static List<Mikan.Group> parseBangumiGroups(Document document) {
-        String bgmUrl = parseBgmUrl(document);
-        List<Mikan.Group> groups = new ArrayList<>();
-
-        Elements subgroupTitles = document.select(".leftbar-item");
-        for (Element subgroupText : subgroupTitles) {
-            Element nameElement = subgroupText.selectFirst("a.subgroup-name");
-            if (Objects.isNull(nameElement)) {
-                continue;
-            }
-            String label = nameElement.text().trim();
-            // id锚点，例如 #213
-            String id = nameElement.attr("data-anchor");
-
-            Element anchor = StrUtil.isNotBlank(id) ? document.selectFirst(id) : null;
-            if (Objects.isNull(anchor)) {
-                // 页面结构异常时跳过该字幕组，不影响其他字幕组展示
-                continue;
-            }
-
-            Mikan.Group group = new Mikan.Group();
-            List<Mikan.Item> items = new ArrayList<>();
-            group.setItems(items)
-                    .setBgmUrl(bgmUrl)
-                    .setLabel(label)
-                    .setSubgroupId(id.replace("#", "").trim())
-                    .setUpdateDay(subgroupText.select(".date").text().trim());
-
-            Element rssElement = anchor.selectFirst(".mikan-rss");
-            if (Objects.nonNull(rssElement)) {
-                group.setRss(getMikanHost() + rssElement.attr("href"));
-            }
-
-            Element table = anchor.nextElementSibling();
-            if (Objects.nonNull(table)) {
-                parseGroupItems(table, items);
-            }
-            groups.add(group);
-        }
-        return groups;
-    }
-
-    /**
-     * 解析某个字幕组的资源表格，单行结构异常时跳过该行
-     */
-    private static void parseGroupItems(Element table, List<Mikan.Item> items) {
-        Element tbody = table.selectFirst("tbody");
-        if (Objects.isNull(tbody)) {
-            return;
-        }
-        String mikanHost = getMikanHost();
-        for (Element tr : tbody.children()) {
-            Elements links = tr.select("a");
-            Elements tds = tr.select("td");
-            if (links.size() < 3 || tds.size() < 4) {
-                continue;
-            }
-            String title = links.get(0).ownText();
-            String magnet = links.get(1).attr("data-clipboard-text");
-            String formatSize = tds.get(2).text().trim();
-            String dateStr = tds.get(3).text().trim();
-            String torrent = links.get(2).attr("href");
-
-            Date createdAt = null;
-            try {
-                createdAt = DateUtil.parse(dateStr);
-            } catch (Exception ignored) {
-            }
-
-            items.add(
-                    new Mikan.Item()
-                            .setTitle(title)
-                            .setMagnet(magnet)
-                            .setFormatSize(formatSize)
-                            .setCreatedAt(createdAt)
-                            .setTorrent(mikanHost + torrent)
-            );
-        }
-    }
-
-    /**
-     * 解析详情页上的 Bangumi 链接
-     */
-    private static String parseBgmUrl(Document document) {
-        Elements bangumiInfos = document.select(".bangumi-info");
-        for (Element bangumiInfo : bangumiInfos) {
-            if (bangumiInfo.ownText().equals("Bangumi番组计划链接：")) {
-                Element link = bangumiInfo.selectFirst("a");
-                if (Objects.nonNull(link)) {
-                    return link.attr("href");
-                }
-            }
-        }
-        return "";
+        return mikanSource.groups(new BangumiRef().setUrl(url)).stream()
+                .map(group -> {
+                    Mikan.Group raw = (Mikan.Group) group.getRaw();
+                    raw.setGroupRegex(group.getGroupRegex());
+                    return raw;
+                })
+                .toList();
     }
 
     public static MikanInfo getMikanInfo(String bangumiId) {
-        URI host = URLUtil.getHost(URLUtil.url(getMikanHost()));
-        String url = host + "/Home/Bangumi/" + bangumiId;
-        return HttpReq.get(url)
-                .thenFunction(res -> {
-                    MikanInfo mikanInfo = new MikanInfo();
-
-                    mikanInfo.setUrl(url);
-
-                    Document html = Jsoup.parse(res.body());
-
-                    Element cover = html.selectFirst(".content > img");
-                    if (Objects.nonNull(cover)) {
-                        mikanInfo.setCover(host + cover.attr("src"));
-                    }
-
-                    Element bangumiTitle = html.selectFirst(".bangumi-title");
-                    if (Objects.nonNull(bangumiTitle)) {
-                        mikanInfo.setTitle(bangumiTitle.text().trim());
-                    }
-
-                    String bgmUrl = parseBgmUrl(html);
-                    if (StrUtil.isNotBlank(bgmUrl)) {
-                        mikanInfo.setBgmUrl(bgmUrl);
-                    }
-
-                    // 获取字幕组
-                    mikanInfo.setGroups(parseBangumiGroups(html));
-                    return mikanInfo;
-                });
+        return MikanParser.getMikanInfo(bangumiId);
     }
 
     public static void getMikanInfo(Ani ani, String subgroupId) {
@@ -415,7 +81,7 @@ public class MikanService {
             return;
         }
 
-        MikanInfo mikanInfo = getMikanInfo(bangumiId);
+        MikanInfo mikanInfo = MikanParser.getMikanInfo(bangumiId);
         Assert.notNull(mikanInfo, "未获取到 Mikan 信息");
 
         String title = mikanInfo.getTitle();
@@ -453,4 +119,56 @@ public class MikanService {
         return "";
     }
 
+    private static SourceQuery toQuery(String text, Mikan.Season season) {
+        SourceQuery query = new SourceQuery();
+        query.setText(text);
+        if (Objects.nonNull(season)) {
+            query.setYear(season.getYear())
+                    .setSeason(season.getSeason());
+        }
+        return query;
+    }
+
+    private static Mikan toMikan(SourceListResult result) {
+        List<Mikan.Season> seasons = result.getSeasons().stream()
+                .map(MikanService::toMikanSeason)
+                .toList();
+        List<Mikan.Week> weeks = result.getWeeks().stream()
+                .map(MikanService::toMikanWeek)
+                .toList();
+        return new Mikan()
+                .setSeasons(seasons)
+                .setWeeks(weeks)
+                .setTotalItem(result.getTotalItem());
+    }
+
+    private static Mikan.Season toMikanSeason(SourceSeason season) {
+        return new Mikan.Season()
+                .setYear(season.getYear())
+                .setSeason(season.getSeason())
+                .setSeasonLabel(season.getSeasonLabel())
+                .setSelect(season.getSelect());
+    }
+
+    private static Mikan.Week toMikanWeek(SourceWeek week) {
+        return new Mikan.Week()
+                .setWeekLabel(week.getWeekLabel())
+                .setItems(week.getItems().stream()
+                        .map(MikanService::toMikanInfo)
+                        .toList());
+    }
+
+    private static MikanInfo toMikanInfo(SourceAnime anime) {
+        MikanInfo raw = (MikanInfo) anime.getRaw();
+        if (StrUtil.isNotBlank(anime.getBgmId())) {
+            raw.setBgmId(anime.getBgmId());
+        }
+        if (anime.getScore() != null) {
+            raw.setScore(anime.getScore());
+        }
+        if (anime.getExists() != null) {
+            raw.setExists(anime.getExists());
+        }
+        return raw;
+    }
 }
