@@ -281,9 +281,9 @@ onMounted(() => {
   min-width: 0;
   height: 100%;
   overflow: hidden;
-  /* 仅主内容区受最大内容宽度约束并居中，侧边栏保持贴左缘 */
-  max-width: calc(var(--max-content-width, 1600px) - var(--app-nav-width));
-  margin-inline: auto;
+  /* 主内容区占满侧栏右侧全部宽度；作为页面滚动条全宽出血的容器查询基准，
+     内容列居中与滚动条贴边统一由 style.css 的 .app-scroll-area 处理 */
+  container-type: inline-size;
 }
 
 /* ---------- 移动端：底部固定导航 ---------- */
@@ -357,12 +357,6 @@ onMounted(() => {
 
   .app-nav-footer {
     display: none;
-  }
-
-  .app-main {
-    height: 100%;
-    max-width: none;
-    margin-inline: 0;
   }
 }
 </style>

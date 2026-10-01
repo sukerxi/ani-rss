@@ -465,7 +465,9 @@ html, body, #app {
     min-height: 0;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    /* 允许页面级滚动容器（.app-scroll-area）向两侧出血到主内容区边缘；
+       各页内部滚动区自身仍有 overflow 约束 */
+    overflow: visible;
 }
 
 .app-page-padding {
@@ -473,8 +475,48 @@ html, body, #app {
     padding-right: var(--app-page-gutter);
 }
 
+/*
+ * 宽屏内容列：页头与页面主体统一按 --max-content-width（扣除侧栏宽度）居中。
+ * 滚动条不参与居中——页面级滚动容器通过 .app-scroll-area 全宽出血贴视口右缘，
+ * 其内部内容再由水平 padding 回到本居中列，与页头/工具条保持对齐。
+ */
+.page-header.app-page-padding,
+.app-page-content.app-page-padding {
+    /* flex 纵向容器中 auto 横向外边距会令子项失去 stretch 而收缩，必须显式撑满再居中 */
+    width: 100%;
+    max-width: calc(var(--max-content-width, 1600px) - var(--app-nav-width, 0px));
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/*
+ * 页面级滚动容器全宽出血：宽度撑满 .app-main（100cqw 容器查询单位），
+ * el-scrollbar 的滚动条因此始终贴在视口右缘；窄屏下自动退化为页面边距。
+ */
+.app-scroll-area {
+    --app-edge-gutter: max(
+        var(--app-page-gutter),
+        calc((100cqw - var(--max-content-width, 1600px) + var(--app-nav-width, 0px) + 2 * var(--app-page-gutter)) / 2)
+    );
+    width: 100cqw;
+    margin-left: calc(50% - 50cqw);
+    margin-right: calc(50% - 50cqw);
+}
+
+.app-scroll-area > .el-scrollbar__wrap > .el-scrollbar__view {
+    padding-left: var(--app-edge-gutter);
+    padding-right: var(--app-edge-gutter);
+    box-sizing: border-box;
+}
+
 @media (max-width: 800px) {
+    /* 窄屏无居中余量，页面边距统一收到 12px（不动 --app-page-gutter，避免影响页头纵向 margin） */
     .app-page-padding {
+        padding-left: var(--app-block-gap);
+        padding-right: var(--app-block-gap);
+    }
+
+    .app-scroll-area > .el-scrollbar__wrap > .el-scrollbar__view {
         padding-left: var(--app-block-gap);
         padding-right: var(--app-block-gap);
     }

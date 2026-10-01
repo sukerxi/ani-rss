@@ -21,7 +21,7 @@
             :label="tab.label"
             :name="tab.name"
             :lazy="true">
-          <el-scrollbar class="config-scrollbar">
+          <el-scrollbar class="config-scrollbar app-scroll-area">
             <div class="tab-scroll-content">
               <DownloadView v-if="tab.name === 'download'" v-model:config="config"/>
               <BasicView v-else-if="tab.name === 'basic'" v-model:config="config"/>
@@ -129,7 +129,8 @@ onMounted(() => {
 .config-tabs :deep(.el-tabs__content) {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  /* 放开裁剪以允许内部滚动条全宽出血；卡片自身背景仍按 border-radius 收敛 */
+  overflow: visible;
   border-radius: 8px;
   background: var(--el-bg-color);
 }

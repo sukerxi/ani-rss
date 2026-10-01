@@ -73,7 +73,7 @@
           <span>来源</span>
           <span>内容</span>
         </div>
-        <el-scrollbar ref="scrollbarRef" class="logs-scrollbar" always>
+        <el-scrollbar ref="scrollbarRef" class="logs-scrollbar app-scroll-area" always>
           <div ref="innerRef" class="log-list">
             <el-empty v-if="!filteredLogs.length"
                       :description="logs.length ? '没有匹配的日志' : '暂无日志'"
@@ -304,7 +304,8 @@ onActivated(getLogs)
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* 放开裁剪，让内部滚动条全宽出血到视口边缘；圆角改由首尾子元素承接 */
+  overflow: visible;
   border-radius: 8px;
   background-color: var(--el-bg-color);
 }
@@ -320,6 +321,7 @@ onActivated(getLogs)
   flex-shrink: 0;
   padding: 8px 12px;
   border-bottom: 1px solid var(--el-border-color-light);
+  border-radius: 8px 8px 0 0;
   color: var(--el-text-color-secondary);
   background-color: var(--el-fill-color-extra-light);
   font-size: 12px;
@@ -344,6 +346,11 @@ onActivated(getLogs)
 
 .log-entry:hover {
   background-color: var(--el-fill-color-light);
+}
+
+/* 承接 .log-viewer 底部圆角（裁剪已放开以允许滚动条出血） */
+.log-entry:last-child {
+  border-radius: 0 0 8px 8px;
 }
 
 .log-entry.level-info {
