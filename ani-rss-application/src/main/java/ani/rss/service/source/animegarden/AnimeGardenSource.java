@@ -10,10 +10,12 @@ import ani.rss.util.basic.HttpReq;
 import ani.rss.util.other.BgmUtil;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.date.DateUtil;
+import cn.hutool.core.lang.Assert;
 import cn.hutool.core.util.StrUtil;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -21,12 +23,14 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
  * AnimeGarden 订阅源实现：JSON API 抓取 + bgm 封面/星期预处理 + 映射为统一模型。
  */
+@Slf4j
 @Service
 public class AnimeGardenSource extends AbstractBangumiSource {
 
@@ -86,10 +90,11 @@ public class AnimeGardenSource extends AbstractBangumiSource {
         JsonObject bgmCover = cacheService.getBgmCover();
 
         String subjectsBody = HttpResponseCache.get("http:animesgarden:subjects",
-                () -> HttpReq.get(HOST + "/subjects"),
+                () -> HttpReq.getRetry(HOST + "/subjects"),
                 SUBJECTS_FRESH_TTL, SUBJECTS_STALE_TTL, query.isRefresh());
         JsonObject subjectsJson = GsonStatic.fromJson(subjectsBody, JsonObject.class);
-        JsonArray subjects = subjectsJson.getAsJsonArray("subjects");
+        JsonArray subjects = Objects.isNull(subjectsJson) ? null : subjectsJson.getAsJsonArray("subjects");
+        Assert.notNull(subjects, "AnimeGarden 响应格式异常, 缺少 subjects 字段");
         List<AnimeGarden.Subject> subjectList =
                 GsonStatic.fromJsonList(subjects, AnimeGarden.Subject.class);
 
@@ -101,7 +106,16 @@ public class AnimeGardenSource extends AbstractBangumiSource {
                             .map(BgmInfo.Images::getSmall)
                             .orElse("");
                     subject.setCover(cover);
-
+                })
+                .filter(subject -> {
+                    // 缺少激活时间的条目无法归属星期, 跳过而非中断整季解析
+                    if (Objects.isNull(subject.getActivedAt())) {
+                        log.warn("AnimeGarden 番剧缺少 activedAt, 已跳过: {}", subject.getId());
+                        return false;
+                    }
+                    return true;
+                })
+                .peek(subject -> {
                     int i = DateUtil.dayOfWeek(subject.getActivedAt()) - 1;
                     subject.setWeekLabel(WEEK_LABELS.get(i));
                 })
@@ -134,14 +148,15 @@ public class AnimeGardenSource extends AbstractBangumiSource {
     protected List<SourceGroup> fetchGroups(BangumiRef ref) {
         String bgmId = ref.getBgmId();
 
-        List<AnimeGarden.Item> items = HttpReq.get(HOST + "/resources")
+        List<AnimeGarden.Item> items = HttpReq.getRetry(HOST + "/resources")
                 .form("subject", bgmId)
                 .form("pageSize", 200)
                 .form("duplicate", false)
                 .thenFunction(res -> {
                     HttpReq.assertStatus(res);
                     JsonObject jsonObject = GsonStatic.fromJson(res.body(), JsonObject.class);
-                    JsonArray resources = jsonObject.getAsJsonArray("resources");
+                    JsonArray resources = Objects.isNull(jsonObject) ? null : jsonObject.getAsJsonArray("resources");
+                    Assert.notNull(resources, "AnimeGarden 资源响应格式异常, 缺少 resources 字段");
                     return GsonStatic.fromJsonList(resources, AnimeGarden.Item.class);
                 });
 

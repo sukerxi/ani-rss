@@ -6,6 +6,7 @@ import ani.rss.entity.AniBT;
 import ani.rss.service.source.*;
 import ani.rss.util.basic.HttpReq;
 import ani.rss.util.other.BgmUtil;
+import cn.hutool.core.lang.Assert;
 import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.crypto.SecureUtil;
@@ -16,6 +17,7 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * AniBT 订阅源实现：JSON API 抓取 + 映射为统一模型。
@@ -58,7 +60,7 @@ public class AniBTSource extends AbstractBangumiSource {
         String body;
         if (StrUtil.isNotBlank(title)) {
             // 搜索请求不缓存, 始终实时
-            body = HttpReq.get(HOST + "/api/seasons/anime")
+            body = HttpReq.getRetry(HOST + "/api/seasons/anime")
                     .form("season", season)
                     .form("bgmId", bgmId)
                     .form("query", title)
@@ -69,7 +71,7 @@ public class AniBTSource extends AbstractBangumiSource {
         } else {
             String cacheKey = "http:anibt:seasons:" + SecureUtil.md5(season + "|" + bgmId);
             body = HttpResponseCache.get(cacheKey,
-                    () -> HttpReq.get(HOST + "/api/seasons/anime")
+                    () -> HttpReq.getRetry(HOST + "/api/seasons/anime")
                             .form("season", season)
                             .form("bgmId", bgmId)
                             .form("query", ""),
@@ -77,7 +79,10 @@ public class AniBTSource extends AbstractBangumiSource {
         }
 
         JsonObject jsonObject = GsonStatic.fromJson(body, JsonObject.class);
-        AniBT aniBT = GsonStatic.fromJson(jsonObject.getAsJsonObject("data"), AniBT.class);
+        JsonObject data = Objects.isNull(jsonObject) ? null : jsonObject.getAsJsonObject("data");
+        Assert.notNull(data, "AniBT 响应格式异常, 缺少 data 字段");
+        AniBT aniBT = GsonStatic.fromJson(data, AniBT.class);
+        Assert.notNull(aniBT, "AniBT 响应格式异常");
 
         SourceListResult result = new SourceListResult();
         result.setRaw(aniBT);
@@ -108,13 +113,15 @@ public class AniBTSource extends AbstractBangumiSource {
     @Override
     protected List<SourceGroup> fetchGroups(BangumiRef ref) {
         String bgmId = ref.getBgmId();
-        return HttpReq.get(HOST + "/api/anime/groups")
+        return HttpReq.getRetry(HOST + "/api/anime/groups")
                 .form("bgmId", bgmId)
                 .thenFunction(res -> {
                     HttpReq.assertStatus(res);
                     JsonObject jsonObject = GsonStatic.fromJson(res.body(), JsonObject.class);
-                    JsonArray groups = jsonObject.getAsJsonObject("data")
-                            .getAsJsonArray("groups");
+                    JsonObject data = Objects.isNull(jsonObject) ? null : jsonObject.getAsJsonObject("data");
+                    Assert.notNull(data, "AniBT 字幕组响应格式异常, 缺少 data 字段");
+                    JsonArray groups = data.getAsJsonArray("groups");
+                    Assert.notNull(groups, "AniBT 字幕组响应格式异常, 缺少 groups 字段");
                     List<AniBT.Group> rawList = GsonStatic.fromJsonList(groups, AniBT.Group.class);
 
                     List<SourceGroup> result = new ArrayList<>();

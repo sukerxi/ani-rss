@@ -114,6 +114,7 @@ public class ItemsUtil {
 
         Document document = XmlUtil.readXML(xml);
         Node channel = document.getElementsByTagName("channel").item(0);
+        Assert.notNull(channel, "rss 格式错误, 缺少 channel 节点: {}", rssUrl);
         NodeList childNodes = channel.getChildNodes();
         List<String> globalExcludeList = CONFIG.getExclude();
         Boolean globalExclude = ani.getGlobalExclude();
@@ -143,7 +144,10 @@ public class ItemsUtil {
 
                 if (itemChildNodeName.equals("enclosure")) {
                     NamedNodeMap attributes = itemChild.getAttributes();
-                    torrent = attributes.getNamedItem("url").getNodeValue();
+                    Node urlNode = attributes.getNamedItem("url");
+                    if (Objects.nonNull(urlNode)) {
+                        torrent = urlNode.getNodeValue();
+                    }
                     length = Optional.of(attributes)
                             .map(it -> it.getNamedItem("length"))
                             .map(Node::getNodeValue)

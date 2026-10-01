@@ -95,14 +95,20 @@ public class HttpReq {
     }
 
     /**
+     * 幂等抓取请求的重试次数
+     */
+    private static final int RETRY_COUNT = 2;
+
+    /**
      * 创建请求
      *
      * @param method 请求方式
      * @param url    原始链接
      * @return HttpRequest
      */
-    private static HttpRequest of(Method method, String url) {
-        HttpRequest req = HttpRequestPlus.of(applyDomainMapping(url)).method(method);
+    private static HttpRequestPlus of(Method method, String url) {
+        HttpRequestPlus req = HttpRequestPlus.of(applyDomainMapping(url));
+        req.method(method);
         config(req);
         // 使用原始链接判断是否需要代理, 避免映射后的域名导致 proxyList 失效
         setProxy(req, ConfigUtil.CONFIG, url);
@@ -122,6 +128,18 @@ public class HttpReq {
 
     public static HttpRequest get(String url) {
         return of(Method.GET, url);
+    }
+
+    /**
+     * 创建带自动重试的 GET 请求 (第三方站点幂等抓取专用)
+     * <p>
+     * 遇到 408/429/5xx 或连接类异常时退避重试, 最多 {@link #RETRY_COUNT} 次
+     *
+     * @param url 原始链接
+     * @return HttpRequest
+     */
+    public static HttpRequestPlus getRetry(String url) {
+        return of(Method.GET, url).setRetry(RETRY_COUNT);
     }
 
     public static HttpRequest put(String url) {

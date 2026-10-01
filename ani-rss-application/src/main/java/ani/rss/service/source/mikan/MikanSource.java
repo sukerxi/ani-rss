@@ -4,7 +4,6 @@ import ani.rss.cache.CacheUtils;
 import ani.rss.entity.Mikan;
 import ani.rss.entity.MikanInfo;
 import ani.rss.service.source.*;
-import ani.rss.util.basic.HttpReq;
 import ani.rss.util.other.AniUtil;
 import ani.rss.util.other.BgmUtil;
 import cn.hutool.core.util.ReUtil;
@@ -22,6 +21,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -31,6 +31,11 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 public class MikanSource extends AbstractBangumiSource {
+
+    /**
+     * 并发补全 bgmId 时对 Mikan 的最大并发数, 避免整季番剧同时抓取触发站点限流
+     */
+    private static final Semaphore BGM_ID_PERMITS = new Semaphore(8);
 
     @Override
     public String code() {
@@ -75,22 +80,19 @@ public class MikanSource extends AbstractBangumiSource {
             }
         }
 
-        String requestUrl = url;
-        HttpReq.get(requestUrl)
-                .then(res -> {
-                    Document document = Jsoup.parse(res.body());
+        // 页面级响应缓存 (fresh 2min / stale 30min) + 状态校验 + 幂等重试
+        Document document = Jsoup.parse(MikanParser.fetchHtml(url, query.isRefresh()));
 
-                    result.setSeasons(MikanParser.parseSeasons(document).stream()
-                            .map(MikanSource::toCanonicalSeason)
-                            .toList());
+        result.setSeasons(MikanParser.parseSeasons(document).stream()
+                .map(MikanSource::toCanonicalSeason)
+                .toList());
 
-                    List<SourceWeek> weeks = MikanParser
-                            .parseCoverFlow(document, host, subscribedMikanIds)
-                            .stream()
-                            .map(MikanSource::toCanonicalWeek)
-                            .toList();
-                    result.setWeeks(new ArrayList<>(weeks));
-                });
+        List<SourceWeek> weeks = MikanParser
+                .parseCoverFlow(document, host, subscribedMikanIds)
+                .stream()
+                .map(MikanSource::toCanonicalWeek)
+                .toList();
+        result.setWeeks(new ArrayList<>(weeks));
 
         result.setTotalItem(result.getWeeks().stream()
                 .mapToInt(week -> week.getItems().size())
@@ -102,8 +104,8 @@ public class MikanSource extends AbstractBangumiSource {
     protected List<SourceGroup> fetchGroups(BangumiRef ref) {
         String url = ref.getUrl();
         String host = MikanParser.getHost();
-        return HttpReq.get(url)
-                .thenFunction(res -> MikanParser.parseGroups(Jsoup.parse(res.body()), host))
+        Document document = Jsoup.parse(MikanParser.fetchHtml(url, false));
+        return MikanParser.parseGroups(document, host)
                 .stream()
                 .map(MikanSource::toCanonicalGroup)
                 .toList();
@@ -126,12 +128,16 @@ public class MikanSource extends AbstractBangumiSource {
 
     /**
      * 并行从 bgmUrl / mikanId 补全 bgmId
+     * <p>
+     * 并发受 {@link #BGM_ID_PERMITS} 限制；未命中映射的番剧由
+     * {@link BgmUtil#getSubjectIdByMikanId} 做短时负缓存，避免每次刷新重复抓取
      */
     @Override
     protected void resolveBgmIds(List<SourceAnime> items) {
         try (ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor()) {
             List<CompletableFuture<Void>> futures = items.stream()
                     .map(anime -> CompletableFuture.runAsync(() -> {
+                        BGM_ID_PERMITS.acquireUninterruptibly();
                         try {
                             if (StrUtil.isNotBlank(anime.getBgmId())) {
                                 return;
@@ -139,11 +145,14 @@ public class MikanSource extends AbstractBangumiSource {
                             if (StrUtil.isNotBlank(anime.getBgmUrl())) {
                                 anime.setBgmId(BgmUtil.getSubjectId(anime.getBgmUrl()));
                             } else {
-                                String mikanId = ReUtil.get("\\d+(/)?$", anime.getSourceUrl(), 0);
+                                String sourceUrl = StrUtil.blankToDefault(anime.getSourceUrl(), "");
+                                String mikanId = ReUtil.get("\\d+(/)?$", sourceUrl, 0);
                                 anime.setBgmId(BgmUtil.getSubjectIdByMikanId(mikanId));
                             }
                         } catch (Exception e) {
                             log.error(e.getMessage(), e);
+                        } finally {
+                            BGM_ID_PERMITS.release();
                         }
                     }, executorService))
                     .toList();

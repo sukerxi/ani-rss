@@ -9,6 +9,7 @@ import ani.rss.entity.web.Header;
 import ani.rss.enums.BgmTokenTypeEnum;
 import ani.rss.service.DownloadService;
 import ani.rss.service.MikanService;
+import ani.rss.service.source.mikan.MikanParser;
 import ani.rss.util.basic.HttpReq;
 import cn.hutool.core.convert.Convert;
 import cn.hutool.core.date.DateUtil;
@@ -27,8 +28,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
 import wushuo.tmdb.api.entity.Tmdb;
 
 import java.io.File;
@@ -1116,7 +1115,8 @@ public class BgmUtil {
     /**
      * 通过 Mikan 番剧 id 获取对应的 bgm.tv 番剧 id
      * <p>
-     * 抓取 Mikan 番剧详情页中的 Bangumi 链接, 映射关系长期持久化缓存
+     * 抓取 Mikan 番剧详情页中的 Bangumi 链接（复用 {@link MikanParser} 的页面缓存与解析），
+     * 映射关系长期持久化缓存；未匹配到映射时短时负缓存，避免列表刷新反复抓取
      *
      * @param mikanId mikan 番剧 id
      * @return bgm 番剧 id, 空字符串表示未找到或获取失败
@@ -1133,35 +1133,27 @@ public class BgmUtil {
             return bgmId;
         }
 
-        String url = MikanService.getMikanHost() + "/Home/Bangumi/" + mikanId;
+        String missKey = "bgmId:miss:" + mikanId;
+        if (CacheUtils.containsKey(missKey)) {
+            return "";
+        }
+
+        String url = MikanParser.detailUrl(mikanId);
 
         try {
-            bgmId = HttpReq.get(url)
-                    .timeout(1000 * 10)
-                    .thenFunction(res -> {
-                        if (!res.isOk()) {
-                            return "";
-                        }
-                        Document document = Jsoup.parse(res.body());
-                        for (Element bangumiInfo : document.select(".bangumi-info")) {
-                            if (!"Bangumi番组计划链接：".equals(bangumiInfo.ownText())) {
-                                continue;
-                            }
-                            String bgmUrl = bangumiInfo.selectFirst("a").attr("href");
-                            if (StrUtil.isBlank(bgmUrl)) {
-                                return "";
-                            }
-                            return getSubjectId(bgmUrl);
-                        }
-                        return "";
-                    });
+            String html = MikanParser.fetchHtml(url, false);
+            String bgmUrl = MikanParser.parseBgmUrl(Jsoup.parse(html));
+            bgmId = StrUtil.isBlank(bgmUrl) ? "" : getSubjectId(bgmUrl);
         } catch (Exception e) {
-            log.error(e.getMessage(), e);
+            log.warn("获取 mikanId={} 对应的 bgmId 失败: {}", mikanId, e.getMessage());
             return "";
         }
 
         if (StrUtil.isNotBlank(bgmId)) {
             getMikanBgmCache().put(cacheKey, bgmId);
+        } else {
+            // 未匹配到 bgm 链接的番剧（如未开播），10 分钟内不重复抓取
+            CacheUtils.put(missKey, Boolean.TRUE, TimeUnit.MINUTES.toMillis(10));
         }
         return bgmId;
     }
