@@ -11,6 +11,7 @@ import cn.hutool.core.util.NumberUtil;
 import cn.hutool.core.util.ReUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.core.util.URLUtil;
+import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -31,6 +32,7 @@ import java.util.Set;
  * <p>页面抓取统一走 {@link #fetchHtml}：带响应缓存、幂等重试与非 2xx 状态校验，
  * 站点错误页/拦截页会明确报错，不再静默产出空数据。</p>
  */
+@Slf4j
 public class MikanParser {
 
     /**
@@ -172,7 +174,9 @@ public class MikanParser {
      * 解析封面流：搜索页（.an-ul）返回单个 "Search" 周；
      * 封面流（.sk-bangumi）按星期返回，空分组跳过
      *
-     * @throws IllegalStateException 页面中既无封面流也无搜索列表时抛出（错误页/改版）
+     * <p>新季度刚开播、Mikan 尚未收录时页面可能完全没有列表容器，
+     * 此时返回空结果而不报错，避免阻断季度选择等后续逻辑；
+     * 真正的错误页（非 2xx / Cloudflare 拦截）已在 {@link #fetchHtml} 拦截。</p>
      */
     public static List<Mikan.Week> parseCoverFlow(Document document, String host,
                                                   Set<String> subscribedMikanIds) {
@@ -182,8 +186,9 @@ public class MikanParser {
         if (skBangumis.isEmpty()) {
             Element anUl = document.selectFirst(".an-ul");
             if (Objects.isNull(anUl)) {
-                // 既无封面流也无搜索列表，说明拿到的是错误页/改版页，明确报错而非静默空结果
-                throw new IllegalStateException("Mikan 页面结构异常, 未找到番剧列表容器 (.sk-bangumi / .an-ul)");
+                // 跨季初期新季度尚未收录时页面没有任何列表容器，属合法空结果，返回空列表
+                log.warn("Mikan 页面未找到番剧列表容器 (.sk-bangumi / .an-ul), 按空结果处理");
+                return weeks;
             }
             List<MikanInfo> mikanInfos = parseAnimeList(anUl, host, subscribedMikanIds);
             weeks.add(new Mikan.Week().setItems(mikanInfos).setWeekLabel("Search"));
