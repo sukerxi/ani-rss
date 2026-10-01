@@ -128,4 +128,16 @@ class GroupRegexUtilsTest {
         assertFalse(groupRegex.getTags().isEmpty());
         assertTrue(groupRegex.getTags().size() <= 5);
     }
+
+    @Test
+    void previewTagsOrderedByCategoryRegardlessOfFrequency() {
+        // 1080P/AVC/MP4 出现 2 次，繁/简 仅 1 次；
+        // 选标签仍按频次取前 5，但展示顺序必须按类别（分辨率→语言→编码→容器）对齐
+        GroupRegex groupRegex = GroupRegexUtils.toGroupRegx(List.of(
+                "[Sub] Title A [05][1080P][繁][AVC][MP4]",
+                "[Sub] Title B [06][1080P][简][AVC][MP4]"
+        ), title -> title);
+
+        assertEquals(List.of("1080P", "繁", "简", "AVC", "MP4"), groupRegex.getTags());
+    }
 }

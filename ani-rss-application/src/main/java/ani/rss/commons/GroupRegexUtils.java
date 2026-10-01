@@ -121,15 +121,18 @@ public class GroupRegexUtils {
             sampleTitles.add(combo.sampleTitle);
         }
 
-        // 行预览标签：按出现频次倒序（族顺序兜底），取前 N 个
+        // 行预览标签：先按出现频次倒序（族顺序兜底）挑出前 N 个，决定「展示哪些」；
+        // 再严格按标签族顺序重排，决定「展示顺序」。
+        // 否则各组资源频次不同会导致每行标签顺序都不一样，视觉上无法按列对齐
         List<String> tags = tagFrequency.entrySet().stream()
                 .filter(e -> e.getValue() > 0)
                 .sorted(Comparator
                         .<Map.Entry<String, Integer>>comparingInt(Map.Entry::getValue)
                         .reversed()
                         .thenComparingInt(e -> ruleByLabel.get(e.getKey()).order()))
-                .map(Map.Entry::getKey)
                 .limit(PREVIEW_TAG_LIMIT)
+                .sorted(Comparator.comparingInt(e -> ruleByLabel.get(e.getKey()).order()))
+                .map(Map.Entry::getKey)
                 .toList();
 
         return new GroupRegex()
