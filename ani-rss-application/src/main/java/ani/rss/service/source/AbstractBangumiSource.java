@@ -9,6 +9,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -45,8 +46,10 @@ public abstract class AbstractBangumiSource implements BangumiSource {
         resolveBgmIds(allItems);
 
         // 2. 源特有过滤（AniBT 非搜索时过滤零发布番剧）
+        // 钩子可能返回 Stream.toList()/List.of 等不可变列表，统一复制为可变列表，
+        // 后续评分排序为原地操作
         for (SourceWeek week : weeks) {
-            week.setItems(filterAnimes(week.getItems(), query));
+            week.setItems(new ArrayList<>(filterAnimes(week.getItems(), query)));
         }
 
         // 3. 统一从 bgm.tv 取评分（唯一口径），并入订阅状态
