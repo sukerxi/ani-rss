@@ -93,7 +93,7 @@
               <el-option v-for="season in data.seasons" :key="season['seasonLabel']"
                          :label="season['seasonLabel']" :value="season['seasonLabel']"/>
             </el-select>
-            <el-button :disabled="rssList.length < 1" bg icon="Plus" text @click="batchAddition">批量添加</el-button>
+            <el-button v-if="!pickMode" :disabled="rssList.length < 1" bg icon="Plus" text @click="batchAddition">批量添加</el-button>
           </div>
         </div>
         <div v-loading="loading" class="scroll-container">
@@ -131,7 +131,7 @@
                               <div class="group-title-wrapper">
                                 <div class="group-checkbox-wrapper">
                                   <el-checkbox :value="JSON.stringify(group)"
-                                               :disabled="group._exists"
+                                               :disabled="pickMode || group._exists"
                                                class="checkbox-margin" @click.stop/>
                                 </div>
                                 <div class="group-label">
@@ -162,7 +162,7 @@
                                     </span>
                                   </el-tooltip>
                                   <el-button v-else bg @click.stop="callback(group)" icon="Plus">
-                                    添加
+                                    {{ pickMode ? '选择' : '添加' }}
                                   </el-button>
                                 </div>
                               </div>
@@ -233,7 +233,12 @@ let data = ref({
 
 let seasonSelect = ref('')
 
+// 选择模式：由「修改订阅 / 备用 RSS」带 ani 唤起时开启，
+// 用于更换主 RSS 或追加备用 RSS，不禁用已订阅番剧的字幕组
+let pickMode = ref(false)
+
 let show = (ani) => {
+  pickMode.value = !!ani
   seasonSelect.value = ''
   dialogVisible.value = true
   text.value = ''
@@ -336,8 +341,9 @@ let collapseChange = (v) => {
   groupLoading.value = true
   http.mikanGroup(v)
       .then(res => {
-        // 番剧已订阅时，禁用其下所有字幕组的选择，避免重复添加
-        const bangumiExists = data.value.weeks
+        // 添加模式下，番剧已订阅时禁用其下所有字幕组，避免重复添加；
+        // 选择模式（修改订阅/备用 RSS）放开禁用，供用户更换字幕组
+        const bangumiExists = !pickMode.value && data.value.weeks
             .some(week => week.items.some(item => item.url === v && item.exists))
         groups.value[v] = (res.data ?? []).map(group => ({...group, _exists: bangumiExists}))
       })
