@@ -11,27 +11,27 @@
         </div>
       </div>
       <el-table size="small" v-model:data="list" height="500px">
-        <el-table-column prop="id" label="id" width="80"/>
-        <el-table-column label="封面" width="120">
+        <el-table-column prop="id" label="id" width="60"/>
+        <el-table-column label="封面" width="96">
           <template #default="it">
-            <img :alt="list[it.$index]['name']" :src="proxyImage(list[it.$index]['images']['large'])" height="100px"
-                 width="78px">
+            <img :alt="list[it.$index]['name']" :src="proxyImage(list[it.$index]['images']['large'])" height="96px"
+                 width="74px">
           </template>
         </el-table-column>
-        <el-table-column label="名称" width="200">
+        <el-table-column label="名称" min-width="120" show-overflow-tooltip>
           <template #default="it">
             <span>{{ list[it.$index]['nameCn'] ? list[it.$index]['nameCn'] : list[it.$index]['name'] }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="评分" width="90">
+        <el-table-column label="评分" width="72">
           <template #default="it">
             <span v-if="list[it.$index]['rating']?.['score'] > 0" class="score-color">
               {{ list[it.$index]['rating']['score'].toFixed(1) }}
             </span>
           </template>
         </el-table-column>
-        <el-table-column label="url" prop="url" width="240"/>
-        <el-table-column>
+        <el-table-column label="url" prop="url" min-width="130" show-overflow-tooltip/>
+        <el-table-column width="72">
           <template #default="it">
             <div class="flex flex-center full-width">
               <el-button bg text @click="ok(list[it.$index])">选择</el-button>

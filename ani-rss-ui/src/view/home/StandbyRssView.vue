@@ -65,7 +65,7 @@
           <el-empty :image-size="56"
                     description="点击上方 + 或来源图标添加备用字幕组"/>
         </template>
-        <el-table-column fixed label="字幕组" min-width="100px">
+        <el-table-column label="字幕组" width="72" class-name="label-cell">
           <template #default="it">
             <div v-if="editIndex !== it.$index">
               {{ standbyRss[it.$index].label }}
@@ -75,7 +75,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="RSS" min-width="400px">
+        <el-table-column label="RSS" min-width="70" show-overflow-tooltip>
           <template #default="it">
             <div v-if="editIndex !== it.$index">
               <el-text line-clamp="1" size="small" truncated>
@@ -89,7 +89,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="偏移" width="150px">
+        <el-table-column label="偏移" width="64">
           <template #default="it">
             <div v-if="editIndex !== it.$index">
               {{ standbyRss[it.$index].offset }}
@@ -97,9 +97,9 @@
             <el-input-number v-else v-model:model-value="standbyRss[it.$index].offset" size="small"/>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="300">
+        <el-table-column label="操作" width="116">
           <template #default="it">
-            <div class="flex">
+            <div class="row-actions">
               <el-button bg text icon="Edit" @click="startEdit(it.$index)" v-if="editIndex !== it.$index"/>
               <el-button bg text icon="Check" @click="normalize" type="primary" v-else/>
               <el-button bg text @click="del(it.$index)" icon="Delete" type="danger"/>
@@ -410,6 +410,41 @@ defineExpose({normalize})
 .standby-table-wrapper {
   flex: 1;
   min-height: 160px;
+}
+
+.standby-table-wrapper :deep(.label-cell) {
+  font-size: 11px;
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.row-actions :deep(.el-button) {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  margin: 0; /* 压住 EP .el-button + .el-button 的 margin-left */
+}
+
+.row-actions :deep(.el-button .el-icon) {
+  font-size: 13px;
+}
+
+/* 编辑态下偏移输入框收进窄列 */
+.standby-table-wrapper :deep(.el-input-number) {
+  width: 100%;
+}
+
+.standby-table-wrapper :deep(.el-input-number .el-input-number__increase),
+.standby-table-wrapper :deep(.el-input-number .el-input-number__decrease) {
+  width: 14px;
+}
+
+.standby-table-wrapper :deep(.el-input-number .el-input__inner) {
+  padding: 0;
 }
 
 .standby-spacer {
