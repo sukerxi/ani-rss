@@ -37,6 +37,15 @@
           </el-select>
         </div>
         <div class="subscription-actions">
+          <el-tooltip :content="effectiveViewMode === 'cover' ? '列表视图' : '卡片视图'"
+                      placement="top">
+            <el-button aria-label="切换视图"
+                       class="auto-button"
+                       :icon="effectiveViewMode === 'cover' ? 'List' : 'Grid'"
+                       @click="toggleViewMode">
+              {{ effectiveViewMode === 'cover' ? '列表' : '卡片' }}
+            </el-button>
+          </el-tooltip>
           <el-dropdown trigger="click">
             <el-button aria-label="添加" type="primary" class="auto-button" icon="Plus">
               添加
@@ -68,16 +77,16 @@
           ref="listRef"
           :filter="filter"
           :title="title"
-          :view-mode="subscriptionViewMode"
+          :view-mode="effectiveViewMode"
           @loaded="listLoaded"/>
     </div>
   </div>
 </template>
 
 <script setup>
-import {onMounted, ref} from "vue";
+import {computed, onMounted, ref} from "vue";
 import {ElMessage, ElMessageBox} from "element-plus";
-import {useLocalStorage} from "@vueuse/core";
+import {useLocalStorage, useMediaQuery} from "@vueuse/core";
 import SubscriptionListView from "@/view/home/SubscriptionListView.vue";
 import AddView from "@/view/home/AddView.vue";
 import CollectionView from "@/view/home/CollectionView.vue";
@@ -111,6 +120,14 @@ const enableSelect = [
   }
 ]
 const filter = ref(() => true)
+
+// 未手动选择时跟随屏幕：大屏默认封面卡片，手机默认列表；手动切换后固化
+const isMobileScreen = useMediaQuery('(max-width: 800px)')
+const effectiveViewMode = computed(() =>
+    subscriptionViewMode.value ?? (isMobileScreen.value ? 'card' : 'cover'))
+const toggleViewMode = () => {
+  subscriptionViewMode.value = effectiveViewMode.value === 'cover' ? 'card' : 'cover'
+}
 
 const changeFilterList = () => {
   listRef.value?.changeFilterList(title.value)

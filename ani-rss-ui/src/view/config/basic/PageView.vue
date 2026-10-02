@@ -72,8 +72,9 @@
   </SettingsItem>
   <SettingsItem label="订阅布局">
     <el-select v-model="subscriptionViewMode" class="width-150">
-      <el-option label="封面" value="cover"/>
-      <el-option label="卡片" value="card"/>
+      <el-option label="自动（大屏卡片 / 手机列表）" :value="null"/>
+      <el-option label="卡片" value="cover"/>
+      <el-option label="列表" value="card"/>
     </el-select>
   </SettingsItem>
   <SettingsItem label="点击封面">

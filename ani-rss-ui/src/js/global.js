@@ -35,9 +35,9 @@ const showScore = useLocalStorage('show-score', true)
 const showWeek = useLocalStorage("show-week", true)
 
 /**
- * 订阅页面布局
+ * 订阅页面布局（null = 自动：大屏封面，小屏列表）
  */
-const subscriptionViewMode = useLocalStorage('subscription-view-mode', 'cover')
+const subscriptionViewMode = useLocalStorage('subscription-view-mode', null)
 
 /**
  * 点击订阅封面时执行的操作
