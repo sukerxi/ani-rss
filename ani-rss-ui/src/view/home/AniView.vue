@@ -415,14 +415,30 @@ let getBgmName = () => {
 
 let mikanCallback = v => {
   let {subgroup, match, url} = v
+
+  let oldSubgroup = props.ani.subgroup
+  let standbyLabels = (props.ani.standbyRssList ?? []).map(it => it.label)
+
   props.ani.url = url
   props.ani.subgroup = subgroup
 
+  // 切换主字幕组时需要剔除的 {{组}}: 规则：
+  // 1. 新字幕组自己的旧规则，防止重复添加
+  // 2. 被换掉的旧主字幕组规则，前提是它不在备用列表中，否则会残留成永不生效的孤立规则
+  let removedGroups = new Set([subgroup])
+  if (oldSubgroup && oldSubgroup !== subgroup && !standbyLabels.includes(oldSubgroup)) {
+    removedGroups.add(oldSubgroup)
+  }
+  props.ani.match = (props.ani.match ?? []).filter(rule => {
+    for (let group of removedGroups) {
+      if (rule.indexOf(`{{${group}}}:`) === 0) {
+        return false
+      }
+    }
+    return true
+  })
+
   let newMatch = JSON.parse(match).map(s => `{{${subgroup}}}:${s}`)
-
-  // 剔除旧的同字幕组规则
-  props.ani.match = props.ani.match.filter(it => it.indexOf(`{{${subgroup}}}:`) !== 0)
-
   props.ani.match.push(...newMatch)
 }
 

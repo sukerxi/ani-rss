@@ -100,7 +100,7 @@
         <el-table-column label="操作" width="300">
           <template #default="it">
             <div class="flex">
-              <el-button bg text icon="Edit" @click="editIndex = it.$index" v-if="editIndex !== it.$index"/>
+              <el-button bg text icon="Edit" @click="startEdit(it.$index)" v-if="editIndex !== it.$index"/>
               <el-button bg text icon="Check" @click="normalize" type="primary" v-else/>
               <el-button bg text @click="del(it.$index)" icon="Delete" type="danger"/>
               <el-button :disabled="it.$index < 1" bg icon="ArrowUpBold" text type="primary"
@@ -125,6 +125,9 @@ import * as http from "@/js/http.js";
 
 const props = defineProps(['ani'])
 const editIndex = ref(-1)
+// 内联编辑字幕组名时，记录被编辑的行对象与编辑前的组名，供确定后迁移 {{组}}: 规则前缀
+let editingRow = null
+let editingOldLabel = ''
 const aniBTRef = ref()
 const mikanRef = ref()
 const animeGardenRef = ref()
@@ -187,23 +190,94 @@ let plus = () => {
     offset: props.ani.offset
   }
   standbyRss.value.push(object)
-  editIndex.value = standbyRss.value.length - 1
+  startEdit(standbyRss.value.length - 1)
   return object
 }
 
-let del = (index) => {
+// 组名是否仍被「主 RSS 或任一备用 RSS」引用；match 规则只应保留给这些组
+let isGroupInUse = (label) => {
+  if (!label) {
+    return false
+  }
+  if (props.ani.subgroup === label) {
+    return true
+  }
+  return standbyRss.value.some(it => it.label === label)
+}
+
+// 清理已无任何 RSS 引用的 {{组}}: 规则，避免残留成预览里告警的孤立规则
+let pruneOrphanGroupRules = (label) => {
+  if (!label || isGroupInUse(label) || !Array.isArray(props.ani.match)) {
+    return
+  }
+  const prefix = `{{${label}}}:`
+  props.ani.match = props.ani.match.filter(rule => rule.indexOf(prefix) !== 0)
+}
+
+// 备用行内联改名后，把 {{旧组名}}: 规则前缀整体迁移到新组名
+let renameGroupRules = (oldLabel, newLabel) => {
+  if (!oldLabel || !newLabel || oldLabel === newLabel || !Array.isArray(props.ani.match)) {
+    return
+  }
+  const oldPrefix = `{{${oldLabel}}}:`
+  props.ani.match = props.ani.match.map(rule =>
+      rule.indexOf(oldPrefix) === 0 ? `{{${newLabel}}}:${rule.slice(oldPrefix.length)}` : rule
+  )
+}
+
+let resetEditing = () => {
   editIndex.value = -1
+  editingRow = null
+  editingOldLabel = ''
+}
+
+let startEdit = (index) => {
+  // 直接切到另一行的编辑态时，先把上一行的改名提交掉，避免旧组名丢失跟踪
+  if (editingRow && editingOldLabel) {
+    const currentLabel = (editingRow.label ?? '').trim() || '未知字幕组'
+    editingRow.label = currentLabel
+    renameGroupRules(editingOldLabel, currentLabel)
+  }
+  editIndex.value = index
+  editingRow = standbyRss.value[index] ?? null
+  editingOldLabel = editingRow?.label ?? ''
+}
+
+let del = (index) => {
+  const removed = standbyRss.value[index]
+  const orphanLabels = [removed?.label]
+  // 正在编辑（可能已改了名字但未确定）的行被删时，规则前缀仍是旧名称，两个名字都要检查
+  if (editingRow === removed) {
+    orphanLabels.push(editingOldLabel)
+  }
+  resetEditing()
   standbyRss.value = standbyRss.value.filter((s, i) => i !== index)
+  orphanLabels.forEach(pruneOrphanGroupRules)
 }
 
 const normalize = () => {
-  editIndex.value = -1
+  const row = editingRow
+  const oldLabel = editingOldLabel
+  resetEditing()
+
   standbyRss.value = standbyRss.value
       .map(it => {
         it.url = it.url.trim()
+        it.label = (it.label ?? '').trim() || '未知字幕组'
         return it;
       })
       .filter(it => it.url !== '')
+
+  if (!row || !oldLabel) {
+    return
+  }
+  if (standbyRss.value.includes(row)) {
+    // 行保留且组名被修改：规则前缀跟着迁移
+    renameGroupRules(oldLabel, row.label)
+  } else {
+    // URL 被清空导致行被移除：按删除备用行处理旧组名规则
+    pruneOrphanGroupRules(oldLabel)
+  }
 }
 
 let move = (index, offset) => {
@@ -226,7 +300,8 @@ let mikanCallback = v => {
 
   props.ani.match.push(...newMatch)
 
-  editIndex.value = -1
+  // 信息由选择器一次性填好，不进入内联编辑态（plus 内部会开启编辑跟踪，这里整体复位）
+  resetEditing()
 }
 
 let animeGardenShow = () => {
