@@ -5,6 +5,7 @@ import ani.rss.commons.GsonStatic;
 import ani.rss.entity.*;
 import ani.rss.entity.dto.RssToAniDTO;
 import ani.rss.entity.torrent.TorrentsInfo;
+import ani.rss.enums.StandbyModeEnum;
 import ani.rss.exception.ResultException;
 import ani.rss.handle.JsonReader;
 import ani.rss.handle.JsonWriter;
@@ -454,6 +455,7 @@ public class AniUtil {
                 .setId(UUID.randomUUID().toString())
                 .setMikanTitle("")
                 .setStandbyRssList(new ArrayList<>())
+                .setStandbyMode(StandbyModeEnum.REPLACE.getValue())
                 .setOffset(0)
                 .setReleaseDate(new DateTime())
                 .setEnable(true)

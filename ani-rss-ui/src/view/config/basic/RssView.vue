@@ -112,6 +112,10 @@
         <el-checkbox v-model="props.config['copyMasterToStandby']" :disabled="!props.config.standbyRss"
                      label="添加订阅时自动复制主rss至备用rss"/>
       </div>
+      <el-text class="mx-1" size="small">
+        此开关仅对未单独选择补位模式的订阅生效；每个订阅可在「编辑订阅 → 备用 RSS」中单独选择
+        <strong>洗版 / 不覆盖 / 共存</strong>
+      </el-text>
       <div class="flex full-width justify-end">
         <el-link
             type="primary"

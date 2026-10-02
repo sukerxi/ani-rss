@@ -186,6 +186,8 @@ const getRss = () => {
         let match = ani.value['match'];
         ani.value = res['data']
         ani.value['match'] = match
+        // rssToAni 返回的新对象不带补位模式, 新订阅默认洗版
+        ani.value['standbyMode'] = ani.value['standbyMode'] || 'replace'
         ani.value.showDownlaod = false
         showRss.value = false
       })

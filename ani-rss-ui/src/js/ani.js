@@ -3,6 +3,7 @@ export let aniData = {
     "mikanTitle": "",
     "url": "",
     "standbyRssList": [],
+    "standbyMode": "replace",
     "title": "",
     "offset": 0,
     "releaseDate": "2026-01-01",

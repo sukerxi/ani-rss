@@ -153,8 +153,19 @@ public class DownloadService {
                 }
             }
 
+            // 先到先得（不覆盖）：该集已由任意字幕组下载时, 高优先级来源不再替换
+            if (ItemsUtil.isSticky(ani) && episodeTaken(ani, item, context)) {
+                log.info("不覆盖模式, 该集已由其他字幕组下载, 跳过 {}", reName);
+                // 记录种子, 后续轮询直接走 torrent.exists() 快速路径, 与 itemDownloaded 口径一致
+                TorrentUtil.saveTorrent(ani, item);
+                if (master && !is5) {
+                    currentDownloadCount++;
+                }
+                continue;
+            }
+
             // 仅在主RSS更新后删除备用RSS
-            if (delete && master && deleteStandbyRSSOnly) {
+            if (delete && master && deleteStandbyRSSOnly && !ItemsUtil.isSticky(ani)) {
                 TorrentsInfo standbyRSS = torrentsInfos
                         .stream()
                         .filter(torrentsInfo -> {
@@ -280,7 +291,6 @@ public class DownloadService {
      */
     public void deleteStandbyRss(Ani ani, Item item, DownloadContext context) {
         Boolean standbyRss = CONFIG.getStandbyRss();
-        Boolean coexist = CONFIG.getCoexist();
         Boolean delete = CONFIG.getDelete();
         String reName = item.getReName();
 
@@ -292,7 +302,12 @@ public class DownloadService {
             return;
         }
 
-        if (coexist) {
+        if (ItemsUtil.isSticky(ani)) {
+            // 先到先得（不覆盖）模式不洗版
+            return;
+        }
+
+        if (ItemsUtil.isCoexist(ani)) {
             // 开启多字幕组共存将不会进行洗版
             return;
         }
@@ -365,6 +380,58 @@ public class DownloadService {
                 }
             }
         }
+    }
+
+    /**
+     * 先到先得（不覆盖）模式下, 判断该集是否已被任意字幕组下载
+     * 识别口径与洗版逻辑一致：保存路径相同, 且任务名/本地视频文件含相同的 SxxEyy 集号
+     *
+     * @param ani     订阅
+     * @param item    资源项
+     * @param context 下载器任务快照
+     * @return 该集已存在下载任务或本地文件
+     */
+    private boolean episodeTaken(Ani ani, Item item, DownloadContext context) {
+        if (Boolean.TRUE.equals(ani.getOva())) {
+            // OVA 不按集号链接, 不参与先到先得判定
+            return false;
+        }
+
+        String reName = item.getReName();
+        if (!ReUtil.contains(StringEnum.SEASON_REG, reName)) {
+            return false;
+        }
+        String episode = ReUtil.get(StringEnum.SEASON_REG, reName, 0);
+        String downloadPath = getDownloadPath(ani);
+
+        // 下载器任务中已有同季同集任务（不论字幕组）
+        for (TorrentsInfo torrentsInfo : context.findBySavePath(downloadPath)) {
+            String name = torrentsInfo.getName();
+            if (ReUtil.contains(StringEnum.SEASON_REG, name)
+                    && ReUtil.get(StringEnum.SEASON_REG, name, 0).equalsIgnoreCase(episode)) {
+                return true;
+            }
+        }
+
+        // 本地目录已有同季同集视频文件
+        int season = ani.getSeason();
+        double episodeNumber = item.getEpisode();
+        return context.listFiles(downloadPath)
+                .stream()
+                .filter(file -> FileUtils.isVideoFormat(file.getName()))
+                .anyMatch(file -> {
+                    String fileName = file.getName();
+                    if (!ReUtil.contains(StringEnum.SEASON_REG, fileName)) {
+                        return false;
+                    }
+                    String seasonStr = ReUtil.get(StringEnum.SEASON_REG, fileName, 1);
+                    String episodeStr = ReUtil.get(StringEnum.SEASON_REG, fileName, 2);
+                    if (StrUtil.isBlank(seasonStr) || StrUtil.isBlank(episodeStr)) {
+                        return false;
+                    }
+                    return season == Integer.parseInt(seasonStr)
+                            && episodeNumber == Double.parseDouble(episodeStr);
+                });
     }
 
     /**

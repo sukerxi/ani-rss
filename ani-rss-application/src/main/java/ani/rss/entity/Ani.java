@@ -49,6 +49,12 @@ public class Ani implements Serializable {
     private List<StandbyRss> standbyRssList;
 
     /**
+     * 备用RSS补位模式: default(跟随全局) / replace(洗版) / sticky(不覆盖,先到先得) / coexist(共存)
+     */
+    @Schema(description = "备用RSS补位模式: default/replace/sticky/coexist")
+    private String standbyMode;
+
+    /**
      * 标题
      */
     @Schema(description = "标题")

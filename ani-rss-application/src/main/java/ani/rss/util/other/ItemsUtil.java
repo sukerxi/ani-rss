@@ -8,6 +8,7 @@ import ani.rss.entity.Item;
 import ani.rss.entity.RejectedItem;
 import ani.rss.entity.StandbyRss;
 import ani.rss.enums.NotificationStatusEnum;
+import ani.rss.enums.StandbyModeEnum;
 import ani.rss.enums.StringEnum;
 import ani.rss.util.basic.HttpReq;
 import cn.hutool.core.collection.CollUtil;
@@ -72,8 +73,8 @@ public class ItemsUtil {
                     .peek(item -> item.setMaster(false))
                     .toList());
         }
-        // 多字幕组共存模式
-        Boolean coexist = CONFIG.getCoexist();
+        // 多字幕组共存模式（订阅级模式优先, default 回落全局设置）
+        boolean coexist = isCoexist(ani);
         if (coexist) {
             items = CollUtil.distinct(items, Item::getReName, false);
         } else {
@@ -349,6 +350,32 @@ public class ItemsUtil {
     }
 
     /**
+     * 该订阅是否为多字幕组共存模式
+     * 订阅显式指定 coexist 时为 true；显式指定其他模式时为 false；
+     * 为空/default 时回落全局 CONFIG.coexist（兼容旧订阅）
+     *
+     * @param ani 订阅
+     * @return 是否共存
+     */
+    public static boolean isCoexist(Ani ani) {
+        String mode = ani.getStandbyMode();
+        if (StrUtil.isBlank(mode) || StandbyModeEnum.DEFAULT.getValue().equals(mode)) {
+            return CONFIG.getCoexist();
+        }
+        return StandbyModeEnum.COEXIST.getValue().equals(mode);
+    }
+
+    /**
+     * 该订阅是否为先到先得（不覆盖）模式
+     *
+     * @param ani 订阅
+     * @return 是否不覆盖
+     */
+    public static boolean isSticky(Ani ani) {
+        return StandbyModeEnum.STICKY.getValue().equals(ani.getStandbyMode());
+    }
+
+    /**
      * 获取rss内容
      *
      * @param url RSS链接
@@ -456,7 +483,7 @@ public class ItemsUtil {
 
     public static int currentEpisodeNumber(Ani ani, List<Item> items) {
         Boolean standbyRss = CONFIG.getStandbyRss();
-        Boolean coexist = CONFIG.getCoexist();
+        boolean coexist = isCoexist(ani);
         if (standbyRss && coexist) {
             // 开启多字幕组共存模式则只计算主rss集数
             items = items.stream()
