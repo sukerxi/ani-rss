@@ -317,16 +317,16 @@ onMounted(() => {
     height: 58px;
     display: flex;
     flex-direction: row;
-    justify-content: space-around;
-    gap: 4px;
+    align-items: center;
+    gap: 0;
     padding: 4px;
     box-sizing: border-box;
   }
 
+  /* 展平桌面端的「追番/系统」分组：5 个标签作为同一行的 flex 项均分，
+     否则两个分组各占 50%，会出现 3 个挤左半、2 个占右半的间距不均 */
   .app-menu-group {
-    flex: 1;
-    min-width: 0;
-    flex-direction: row;
+    display: contents;
   }
 
   .app-menu-group-title {
@@ -336,12 +336,13 @@ onMounted(() => {
   .app-menu :deep(.el-menu-item) {
     flex: 1;
     min-width: 0;
-    height: 50px;
+    height: 44px;
     line-height: 1;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 4px;
+    align-items: center;
+    gap: 3px;
     margin: 0 3px;
     padding: 0 4px !important;
     transition: color var(--el-transition-duration), background-color var(--el-transition-duration), box-shadow var(--el-transition-duration);
