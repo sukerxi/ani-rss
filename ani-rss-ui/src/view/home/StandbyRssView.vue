@@ -271,11 +271,13 @@ defineExpose({normalize})
 .standby-mode-group {
   display: flex;
   flex-direction: column;
+  align-items: stretch; /* 覆盖 EP .el-radio-group 默认的 align-items:center，避免卡片按内容宽度收缩后水平居中错位 */
   gap: 6px;
   width: 100%;
 }
 
 .standby-mode-item {
+  width: 100%;
   height: auto;
   margin-right: 0;
   padding: 7px 10px;
